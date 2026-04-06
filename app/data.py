@@ -5,10 +5,20 @@ import pandas as pd
 
 AV_BASE      = "https://www.alphavantage.co/query"
 AV_KEY       = os.environ.get("AV_API_KEY", "")
-_LAST_CALL   = 0.0   # timestamp da última chamada
+_LAST_CALL   = 0.0      # timestamp da última chamada
+_CACHE       = {}       # cache em memória: (function, symbol) -> data
+_CACHE_TTL   = 3600     # 1 hora
 
 def _get(function, symbol, **kwargs):
-    global _LAST_CALL
+    global _LAST_CALL, _CACHE
+    cache_key = (function, symbol)
+
+    # Retorna do cache se disponível e fresco
+    if cache_key in _CACHE:
+        ts, data = _CACHE[cache_key]
+        if time.time() - ts < _CACHE_TTL:
+            return data
+
     # Respeita 1 req/segundo do plano gratuito
     elapsed = time.time() - _LAST_CALL
     if elapsed < 1.2:
@@ -22,6 +32,8 @@ def _get(function, symbol, **kwargs):
     data = r.json()
     if "Information" in data or "Note" in data:
         raise ValueError(data.get("Information") or data.get("Note"))
+
+    _CACHE[cache_key] = (time.time(), data)
     return data
 
 def _f(d, *keys):
@@ -59,6 +71,7 @@ def fetch_company_profile(ticker):
 
 
 def fetch_quarterly_financials(ticker, quarters=20):
+    quarters = min(quarters, 20)
     inc_data = _get("INCOME_STATEMENT",  ticker)
     bs_data  = _get("BALANCE_SHEET",     ticker)
     cf_data  = _get("CASH_FLOW",         ticker)
