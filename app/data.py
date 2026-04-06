@@ -1,14 +1,23 @@
 import os
+import time
 import requests
 import pandas as pd
 
-AV_BASE = "https://www.alphavantage.co/query"
-AV_KEY  = os.environ.get("AV_API_KEY", "")
+AV_BASE      = "https://www.alphavantage.co/query"
+AV_KEY       = os.environ.get("AV_API_KEY", "")
+_LAST_CALL   = 0.0   # timestamp da última chamada
 
 def _get(function, symbol, **kwargs):
+    global _LAST_CALL
+    # Respeita 1 req/segundo do plano gratuito
+    elapsed = time.time() - _LAST_CALL
+    if elapsed < 1.2:
+        time.sleep(1.2 - elapsed)
+    _LAST_CALL = time.time()
+
     params = {"function": function, "symbol": symbol, "apikey": AV_KEY}
     params.update(kwargs)
-    r = requests.get(AV_BASE, params=params, timeout=20)
+    r = requests.get(AV_BASE, params=params, timeout=30)
     r.raise_for_status()
     data = r.json()
     if "Information" in data or "Note" in data:
@@ -70,9 +79,10 @@ def fetch_quarterly_financials(ticker, quarters=20):
     dates = sorted(set(inc_d.keys()) & set(bs_d.keys()) & set(cf_d.keys()))
     dates = dates[-quarters:]
 
-    # Shares fallback do overview
-    overview      = _get("OVERVIEW", ticker)
-    shares_ref    = _f(overview, "SharesOutstanding") or 1
+    # Shares fallback — tenta do primeiro balanço disponível
+    shares_ref = 1
+    if bs_q:
+        shares_ref = _f(bs_q[0], "commonStockSharesOutstanding") or 1
 
     rows = []
     for date in dates:
