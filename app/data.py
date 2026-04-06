@@ -1,154 +1,160 @@
+import os
+import requests
 import pandas as pd
 
-# ── Tenta usar curl_cffi (mais resistente a bloqueios) ────────────────────────
-try:
-    from curl_cffi import requests as curl_requests
-    _CURL_SESSION = curl_requests.Session(impersonate="chrome110")
-    import yfinance as yf
-    _USE_CURL = True
-except Exception:
-    _USE_CURL = False
-    import yfinance as yf
+AV_BASE = "https://www.alphavantage.co/query"
+AV_KEY  = os.environ.get("AV_API_KEY", "")
 
-def _ticker(symbol):
-    if _USE_CURL:
-        return yf.Ticker(symbol, session=_CURL_SESSION)
-    return yf.Ticker(symbol)
+def _get(function, symbol, **kwargs):
+    params = {"function": function, "symbol": symbol, "apikey": AV_KEY}
+    params.update(kwargs)
+    r = requests.get(AV_BASE, params=params, timeout=20)
+    r.raise_for_status()
+    data = r.json()
+    if "Information" in data or "Note" in data:
+        raise ValueError(data.get("Information") or data.get("Note"))
+    return data
 
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _safe(df, *keys):
-    if df is None or df.empty:
-        return None
+def _f(d, *keys):
+    """Pega valor float de um dict por múltiplas chaves alternativas."""
     for k in keys:
-        if k in df.index:
-            return df.loc[k]
-    return None
-
-def _v(series, date):
-    if series is None:
-        return 0.0
-    try:
-        v = series.get(date, 0.0)
-        return float(v) if pd.notna(v) else 0.0
-    except Exception:
-        return 0.0
-
-def _ttm(df, date, dates, *keys):
-    series = _safe(df, *keys)
-    if series is None:
-        return 0.0
-    idx = list(dates).index(date)
-    window = list(dates)[max(0, idx-3): idx+1]
-    total = 0.0
-    for d in window:
-        try:
-            v = series.get(d, 0.0)
-            if pd.notna(v):
-                total += float(v)
-        except Exception:
-            pass
-    return total
+        v = d.get(k)
+        if v and v != "None":
+            try:
+                return float(v)
+            except Exception:
+                pass
+    return 0.0
 
 
 def fetch_company_profile(ticker):
     try:
-        t    = _ticker(ticker)
-        info = t.info or {}
+        data  = _get("GLOBAL_QUOTE", ticker)
+        quote = data.get("Global Quote", {})
+        price = _f(quote, "05. price")
 
-        price = (info.get("currentPrice")
-              or info.get("regularMarketPrice")
-              or info.get("previousClose")
-              or 0)
-
-        if not price:
-            hist = t.history(period="2d")
-            if not hist.empty:
-                price = float(hist["Close"].iloc[-1])
-
+        info  = _get("OVERVIEW", ticker)
         return {
-            "companyName":      info.get("longName") or info.get("shortName", ticker),
-            "price":            float(price),
-            "sector":           info.get("sector", ""),
-            "industry":         info.get("industry", ""),
-            "currency":         info.get("currency", "USD"),
-            "exchangeShortName":info.get("exchange", ""),
-            "description":      (info.get("longBusinessSummary") or "")[:300],
-            "sharesOutstanding":info.get("sharesOutstanding") or 0,
+            "companyName": info.get("Name", ticker),
+            "price":       price,
+            "sector":      info.get("Sector", ""),
+            "industry":    info.get("Industry", ""),
+            "currency":    "USD",
+            "exchangeShortName": info.get("Exchange", ""),
+            "description": (info.get("Description") or "")[:300],
+            "sharesOutstanding": _f(info, "SharesOutstanding"),
         }
     except Exception:
         return {"companyName": ticker, "price": 0, "sector": "", "industry": "",
                 "currency": "USD", "exchangeShortName": "", "description": "", "sharesOutstanding": 0}
 
 
-def fetch_quarterly_financials(ticker, quarters=45):
-    t = _ticker(ticker)
+def fetch_quarterly_financials(ticker, quarters=20):
+    inc_data = _get("INCOME_STATEMENT",  ticker)
+    bs_data  = _get("BALANCE_SHEET",     ticker)
+    cf_data  = _get("CASH_FLOW",         ticker)
 
-    try:
-        inc = t.get_income_stmt(freq="quarterly", trailing=False)
-    except Exception:
-        inc = t.quarterly_income_stmt
+    inc_q = inc_data.get("quarterlyReports", [])
+    bs_q  = bs_data.get("quarterlyReports",  [])
+    cf_q  = cf_data.get("quarterlyReports",  [])
 
-    try:
-        bs = t.get_balance_sheet(freq="quarterly", trailing=False)
-    except Exception:
-        bs = t.quarterly_balance_sheet
+    # Indexar por data
+    def to_dict(lst):
+        return {item["fiscalDateEnding"]: item for item in lst}
 
-    try:
-        cf = t.get_cash_flow(freq="quarterly", trailing=False)
-    except Exception:
-        cf = t.quarterly_cashflow
+    inc_d = to_dict(inc_q)
+    bs_d  = to_dict(bs_q)
+    cf_d  = to_dict(cf_q)
 
-    if inc is None or inc.empty:
-        return []
+    # Datas comuns ordenadas do mais antigo ao mais recente
+    dates = sorted(set(inc_d.keys()) & set(bs_d.keys()) & set(cf_d.keys()))
+    dates = dates[-quarters:]
 
-    dates = sorted(inc.columns.tolist())
-    if len(dates) > quarters:
-        dates = dates[-quarters:]
-
-    info       = t.info or {}
-    shares_ref = info.get("sharesOutstanding") or 1
+    # Shares fallback do overview
+    overview      = _get("OVERVIEW", ticker)
+    shares_ref    = _f(overview, "SharesOutstanding") or 1
 
     rows = []
     for date in dates:
-        sh_series = _safe(bs, "Ordinary Shares Number", "Share Issued", "Common Stock")
-        shares    = _v(sh_series, date) or shares_ref
+        i = inc_d[date]
+        b = bs_d[date]
+        c = cf_d[date]
 
-        revenue    = _ttm(inc, date, dates, "Total Revenue", "Revenue")
-        ebit       = _ttm(inc, date, dates, "Operating Income", "EBIT", "Ebit")
-        net_income = _ttm(inc, date, dates, "Net Income", "Net Income Common Stockholders")
-        sbc        = _ttm(inc, date, dates, "Stock Based Compensation")
-        da         = _ttm(inc, date, dates, "Reconciled Depreciation",
-                          "Depreciation And Amortization", "Depreciation Amortization Depletion")
-        interest   = _ttm(inc, date, dates, "Interest Expense",
-                          "Interest Expense Non Operating", "Net Interest Income")
-        tax_exp    = _ttm(inc, date, dates, "Tax Provision", "Income Tax Expense")
-        ebt        = _ttm(inc, date, dates, "Pretax Income", "Income Before Tax") or 1
+        shares = _f(b, "commonStockSharesOutstanding") or shares_ref
 
-        ocf        = _ttm(cf, date, dates, "Operating Cash Flow", "Cash Flow From Operations")
-        capex      = _ttm(cf, date, dates, "Capital Expenditure", "Purchase Of PPE", "Capital Expenditures")
-        dividends  = _ttm(cf, date, dates, "Common Stock Dividend Paid",
-                          "Cash Dividends Paid", "Payment Of Dividends")
-        repurchase = _ttm(cf, date, dates, "Repurchase Of Capital Stock",
-                          "Common Stock Repurchase", "Purchase Of Business")
+        # TTM — soma os 4 trimestres disponíveis até esta data
+        def ttm(*keys):
+            idx    = dates.index(date)
+            window = dates[max(0, idx-3): idx+1]
+            total  = 0.0
+            for d in window:
+                src = inc_d.get(d) or cf_d.get(d) or {}
+                for k in keys:
+                    v = src.get(k)
+                    if v and v != "None":
+                        try:
+                            total += float(v)
+                            break
+                        except Exception:
+                            pass
+            return total
 
-        cash_eq    = _v(_safe(bs, "Cash And Cash Equivalents", "Cash"), date)
-        cash_st    = _v(_safe(bs, "Cash Cash Equivalents And Short Term Investments",
-                               "Other Short Term Investments",
-                               "Available For Sale Securities"), date)
-        cash_total = max(cash_eq, cash_st)
-        total_debt = _v(_safe(bs, "Total Debt", "Long Term Debt And Capital Lease Obligation",
-                               "Long Term Debt"), date)
-        goodwill   = _v(_safe(bs, "Goodwill"), date)
-        intang_raw = _v(_safe(bs, "Goodwill And Other Intangible Assets",
-                               "Other Intangible Assets"), date)
-        intang     = max(intang_raw - goodwill, 0)
-        equity     = _v(_safe(bs, "Stockholders Equity", "Total Equity Gross Minority Interest",
-                               "Common Stock Equity"), date) or 1
-        cur_assets = _v(_safe(bs, "Current Assets", "Total Current Assets"), date)
-        cur_liab   = _v(_safe(bs, "Current Liabilities", "Total Current Liabilities"), date)
-        ppe        = _v(_safe(bs, "Net PPE", "Net Property Plant And Equipment"), date)
-        tot_assets = _v(_safe(bs, "Total Assets"), date) or 1
+        def ttm_cf(*keys):
+            idx    = dates.index(date)
+            window = dates[max(0, idx-3): idx+1]
+            total  = 0.0
+            for d in window:
+                src = cf_d.get(d, {})
+                for k in keys:
+                    v = src.get(k)
+                    if v and v != "None":
+                        try:
+                            total += float(v)
+                            break
+                        except Exception:
+                            pass
+            return total
+
+        def ttm_inc(*keys):
+            idx    = dates.index(date)
+            window = dates[max(0, idx-3): idx+1]
+            total  = 0.0
+            for d in window:
+                src = inc_d.get(d, {})
+                for k in keys:
+                    v = src.get(k)
+                    if v and v != "None":
+                        try:
+                            total += float(v)
+                            break
+                        except Exception:
+                            pass
+            return total
+
+        revenue    = ttm_inc("totalRevenue")
+        ebit       = ttm_inc("operatingIncome", "ebit")
+        net_income = ttm_inc("netIncome")
+        sbc        = ttm_inc("stockBasedCompensation") or 0
+        da         = ttm_inc("depreciationAndAmortization") or 0
+        interest   = ttm_inc("interestExpense") or 0
+        tax_exp    = ttm_inc("incomeTaxExpense") or 0
+        ebt        = ttm_inc("incomeBeforeIncomeTaxes", "ebitBeforeInterestAndTaxes") or 1
+
+        ocf        = ttm_cf("operatingCashflow")
+        capex      = ttm_cf("capitalExpenditures")
+        dividends  = ttm_cf("dividendPayout", "dividendPayoutCommonStock") or 0
+        repurchase = ttm_cf("paymentsForRepurchaseOfCommonStock") or 0
+
+        # Balanço (ponto)
+        cash_total = _f(b, "cashAndShortTermInvestments", "cashAndCashEquivalentsAtCarryingValue")
+        total_debt = _f(b, "shortLongTermDebtTotal", "longTermDebt")
+        goodwill   = _f(b, "goodwill")
+        intang     = max(_f(b, "intangibleAssetsExcludingGoodwill", "intangibleAssets") - goodwill, 0)
+        equity     = _f(b, "totalShareholderEquity") or 1
+        cur_assets = _f(b, "totalCurrentAssets")
+        cur_liab   = _f(b, "totalCurrentLiabilities")
+        ppe        = _f(b, "propertyPlantEquipment")
+        tot_assets = _f(b, "totalAssets") or 1
 
         nwc             = (cur_assets - cash_total) - (cur_liab - total_debt)
         invested_cap    = nwc + ppe + goodwill + intang
@@ -173,7 +179,7 @@ def fetch_quarterly_financials(ticker, quarters=45):
             return v / shares if shares else 0
 
         row = {
-            "date":  str(date)[:10],
+            "date":  date,
             "shares": shares,
             "cash_ps":          ps(cash_total),
             "debt_lease_ps":    ps(total_debt),
@@ -218,19 +224,21 @@ def fetch_quarterly_financials(ticker, quarters=45):
         }
         rows.append(row)
 
+    # ROIIC
     for i in range(len(rows)):
         if i >= 4:
             dn = rows[i]["nopat_abs"] - rows[i-4]["nopat_abs"]
             di = rows[i]["invested_cap_abs"] - rows[i-4]["invested_cap_abs"]
             rows[i]["roiic_1y"] = dn / di if di else None
 
+    # CAGRs
     for field, out in [
         ("ebit_ps","_ebit_cagr"), ("fcf_sbc_ps","_fcf_cagr"),
         ("econ_profit_ps","_ep_cagr"), ("dividend_ps","_div_cagr"),
         ("revenue_ps","_rev_cagr"),
     ]:
         for i in range(len(rows)):
-            for yrs in [10, 5, 3]:
+            for yrs in [5, 3]:
                 lb = yrs * 4
                 if i >= lb:
                     v0 = rows[i-lb][field]
@@ -242,14 +250,19 @@ def fetch_quarterly_financials(ticker, quarters=45):
     return rows
 
 
-def fetch_price_history(ticker, start_date, end_date=None):
+def fetch_price_history(ticker, start_date):
+    """Busca preço histórico diário via Alpha Vantage."""
     try:
-        t    = _ticker(ticker)
-        hist = t.history(start=start_date, end=end_date, interval="1d", auto_adjust=True)
-        if hist.empty:
-            return []
-        return [{"date": str(d)[:10], "close": float(r["Close"])}
-                for d, r in hist.iterrows()]
+        data   = _get("TIME_SERIES_DAILY_ADJUSTED", ticker, outputsize="full")
+        series = data.get("Time Series (Daily)", {})
+        result = []
+        for date, vals in sorted(series.items()):
+            if date >= start_date:
+                result.append({
+                    "date":  date,
+                    "close": float(vals.get("5. adjusted close", vals.get("4. close", 0)))
+                })
+        return result
     except Exception:
         return []
 
@@ -311,10 +324,10 @@ def compute_valuation(rows, price, treasury_yield=0.0428):
 
 def fetch_treasury_yield():
     try:
-        t    = _ticker("^TNX")
-        hist = t.history(period="5d")
-        if not hist.empty:
-            return float(hist["Close"].iloc[-1]) / 100
+        data = _get("TREASURY_YIELD", "", interval="monthly", maturity="10year")
+        pts  = data.get("data", [])
+        if pts:
+            return float(pts[0]["value"]) / 100
     except Exception:
         pass
     return 0.0428
@@ -323,7 +336,7 @@ def fetch_treasury_yield():
 def analyze_ticker(ticker):
     ticker   = ticker.upper().strip()
     profile  = fetch_company_profile(ticker)
-    rows     = fetch_quarterly_financials(ticker, quarters=45)
+    rows     = fetch_quarterly_financials(ticker, quarters=20)
     price    = profile.get("price") or 0
     treasury = fetch_treasury_yield()
     val      = compute_valuation(rows, price, treasury)
