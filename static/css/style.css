@@ -149,15 +149,15 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
 /* 45Q TABLE */
 .table-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
 .data-table-wrap { overflow-x: auto; max-height: 520px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
-.data-table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 14px; white-space: nowrap; }
 .data-table th {
   position: sticky; top: 0; background: var(--surface);
-  padding: 8px 12px; text-align: right; color: var(--text3);
+  padding: 9px 14px; text-align: right; color: var(--text3);
   font-weight: 500; border-bottom: 1px solid var(--border); z-index: 2;
 }
 .data-table th:first-child { text-align: left; position: sticky; left: 0; z-index: 3; min-width: 200px; }
 .data-table th.qtr-header { cursor: default; }
-.data-table td { padding: 6px 12px; text-align: right; border-bottom: 1px solid rgba(45,49,80,0.4); }
+.data-table td { padding: 8px 14px; text-align: right; border-bottom: 1px solid rgba(45,49,80,0.4); font-size: 14px; }
 .data-table td:first-child { text-align: left; position: sticky; left: 0; background: var(--surface); color: var(--text2); font-weight: 500; z-index: 1; border-right: 1px solid var(--border); }
 .data-table tr:hover td { background: var(--surface2); }
 .data-table tr:hover td:first-child { background: var(--surface2); }
@@ -253,4 +253,28 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+/* ── Glossário ── */
+.glossary-wrap { display: flex; flex-direction: column; gap: 28px; }
+.glossary-cat-title {
+  font-size: 13px; font-weight: 700; color: var(--accent);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin-bottom: 14px; padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.glossary-items { display: flex; flex-direction: column; gap: 12px; }
+.glossary-item {
+  display: grid; grid-template-columns: 220px 1fr; gap: 16px;
+  padding: 12px 16px; background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 8px;
+  align-items: start;
+}
+.glossary-term {
+  font-weight: 700; font-size: 13px; color: var(--text);
+  padding-top: 1px;
+}
+.glossary-def { font-size: 13px; color: var(--text2); line-height: 1.6; }
+@media (max-width: 700px) {
+  .glossary-item { grid-template-columns: 1fr; gap: 6px; }
 }

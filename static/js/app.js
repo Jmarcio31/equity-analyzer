@@ -242,10 +242,12 @@ function buildCompanyCard(r, idx) {
       <button class="tab-btn active" onclick="switchTab('${r.ticker}','valuation',this)">📊 Valuation</button>
       <button class="tab-btn" onclick="switchTab('${r.ticker}','charts',this)">📈 Gráficos</button>
       <button class="tab-btn" onclick="switchTab('${r.ticker}','table',this)">🗂 ${r.rows.length} Trimestres</button>
+      <button class="tab-btn" onclick="switchTab('${r.ticker}','glossary',this)">📖 Glossário</button>
     </div>
     <div id="panel-${r.ticker}-valuation" class="tab-panel active">${buildValuationPanel(r, v)}</div>
     <div id="panel-${r.ticker}-charts"    class="tab-panel">${buildChartsPanel(r)}</div>
-    <div id="panel-${r.ticker}-table"     class="tab-panel">${buildTablePanel(r)}</div>`;
+    <div id="panel-${r.ticker}-table"     class="tab-panel">${buildTablePanel(r)}</div>
+    <div id="panel-${r.ticker}-glossary"  class="tab-panel">${buildGlossaryPanel()}</div>`;
   return card;
 }
 
@@ -593,6 +595,82 @@ function buildTablePanel(r) {
         <tbody>${tbodyHtml}</tbody>
       </table>
     </div>`;
+}
+
+
+// ─── Glossário ────────────────────────────────────────────────────────────────
+function buildGlossaryPanel() {
+  const terms = [
+    {
+      cat: "Métricas de Lucro Operacional",
+      items: [
+        { term: "EBIT", def: "Earnings Before Interest and Taxes — lucro operacional antes dos juros e impostos. Mede a geração de caixa operacional pura da empresa, excluindo efeitos financeiros e fiscais." },
+        { term: "EBITDA", def: "EBIT + Depreciação e Amortização. Aproximação do fluxo de caixa operacional, muito usada para comparação entre empresas de diferentes países e estruturas de capital." },
+        { term: "NOPAT", def: "Net Operating Profit After Tax — EBIT × (1 − alíquota efetiva de imposto). Representa o lucro operacional após impostos, base para o cálculo do ROIC e do Economic Profit." },
+      ]
+    },
+    {
+      cat: "Fluxo de Caixa",
+      items: [
+        { term: "OCF − SBC", def: "Operating Cash Flow menos Stock-Based Compensation. O caixa operacional ajustado pela remuneração em ações, que é uma despesa real diluída ao acionista mas não sai do caixa." },
+        { term: "FCF − SBC", def: "Free Cash Flow menos SBC. OCF − Capex − SBC. É o caixa livre real gerado para o acionista após investimentos e remuneração em ações. Métrica mais conservadora que o FCF tradicional." },
+        { term: "Capex / Receita", def: "Percentual da receita investido em ativos fixos (Property, Plant & Equipment). Empresas de tecnologia tendem a ter Capex baixo; industriais e utilities, alto." },
+        { term: "Opex / Receita", def: "Despesas operacionais (excluindo COGS e D&A) como percentual da receita. Mede a eficiência operacional." },
+      ]
+    },
+    {
+      cat: "Retorno sobre Capital",
+      items: [
+        { term: "ROIC", def: "Return on Invested Capital — NOPAT ÷ Capital Investido. Mede quanto a empresa gera de retorno para cada real investido. ROIC > WACC significa criação de valor." },
+        { term: "ROIC ex-Goodwill", def: "ROIC calculado excluindo o Goodwill do capital investido. Mostra o retorno sobre o capital tangível, eliminando o efeito de aquisições a prêmio." },
+        { term: "ROIIC", def: "Return on Incremental Invested Capital — variação do NOPAT ÷ variação do Capital Investido (1 ano). Mede o retorno sobre o capital marginal investido recentemente." },
+      ]
+    },
+    {
+      cat: "Custo de Capital e Valor Econômico",
+      items: [
+        { term: "WACC", def: "Weighted Average Cost of Capital — custo médio ponderado de capital. Combina o custo do capital próprio (assumido 10%) com o custo da dívida após impostos, ponderados pela estrutura de capital." },
+        { term: "Economic Profit (EVA)", def: "NOPAT − (WACC × Capital Investido). Valor econômico criado acima do custo de capital. EVA positivo = empresa criando valor; EVA negativo = destruindo valor mesmo com lucro contábil." },
+        { term: "Spread ROIC−WACC", def: "ROIC menos WACC. Spread positivo indica criação de valor; negativo indica destruição. Empresas com spread alto e crescente são as mais valiosas a longo prazo." },
+      ]
+    },
+    {
+      cat: "Valuation",
+      items: [
+        { term: "EV / EBIT", def: "Enterprise Value dividido pelo EBIT TTM. Múltiplo de valuation que compara o valor total da empresa (incluindo dívida) com sua geração operacional. Mais conservador que P/L." },
+        { term: "Fórmula de Graham", def: "Valor Intrínseco = EPS × (8,5 + 2 × CAGR%) × 4,4 / Y, onde Y é o yield do Treasury de 10 anos. Benjamin Graham desenvolveu esta fórmula como estimativa do valor justo de uma ação em crescimento." },
+        { term: "Margem de Segurança", def: "MS = (Valor Intrínseco − Preço) / Valor Intrínseco. Percentual pelo qual o preço está abaixo (positivo = desconto) ou acima (negativo = prêmio) do valor intrínseco de Graham. Graham recomendava MS > 33%." },
+        { term: "CAGR", def: "Compound Annual Growth Rate — taxa de crescimento anual composta. Calculada com base no histórico de 5 ou 3 anos disponível." },
+        { term: "TIR (EBIT Yield)", def: "Taxa Interna de Retorno implícita: EBIT ÷ Enterprise Value. Representa o retorno que um comprador pagando o EV atual obteria se o EBIT se mantivesse constante." },
+      ]
+    },
+    {
+      cat: "Estrutura de Capital e Liquidez",
+      items: [
+        { term: "Cash Excess / Ação", def: "Caixa total menos dívida total, dividido pelo número de ações. Representa o excesso de caixa líquido por ação que pode ser devolvido ao acionista sem afetar as operações." },
+        { term: "Net Debt / FCF", def: "Dívida líquida dividida pelo FCF−SBC anual. Indica em quantos anos a empresa quitaria toda a dívida líquida com seu fluxo de caixa livre atual. Negativo = empresa com caixa líquido." },
+        { term: "Tax Rate Efetivo", def: "Imposto de renda pago ÷ Lucro antes do imposto (TTM). A alíquota real paga pela empresa, que pode diferir significativamente da alíquota nominal por incentivos, deduções e estrutura internacional." },
+        { term: "Capital Investido", def: "NWC (Capital de Giro Líquido) + PP&E + Goodwill + Intangíveis. Representa o total de recursos investidos nas operações da empresa, base para o cálculo do ROIC." },
+        { term: "FCF Yield", def: "FCF−SBC ÷ Market Cap. Rendimento do caixa livre — quanto % do valor de mercado é gerado em caixa livre. Pode ser comparado com o yield de títulos para avaliar atratividade relativa." },
+      ]
+    },
+  ];
+
+  const html = terms.map(cat => `
+    <div class="glossary-cat">
+      <div class="glossary-cat-title">${cat.cat}</div>
+      <div class="glossary-items">
+        ${cat.items.map(item => `
+          <div class="glossary-item">
+            <div class="glossary-term">${item.term}</div>
+            <div class="glossary-def">${item.def}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+
+  return `<div class="glossary-wrap">${html}</div>`;
 }
 
 // ─── CSV Export ───────────────────────────────────────────────────────────────

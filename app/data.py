@@ -274,10 +274,10 @@ def fetch_quarterly_financials(ticker, quarters=20):
 
 
 def fetch_price_history(ticker, start_date):
-    """Busca preço histórico diário via Alpha Vantage."""
+    """Busca preço histórico mensal via Alpha Vantage (economiza requisições)."""
     try:
-        data   = _get("TIME_SERIES_DAILY_ADJUSTED", ticker, outputsize="full")
-        series = data.get("Time Series (Daily)", {})
+        data   = _get("TIME_SERIES_MONTHLY_ADJUSTED", ticker)
+        series = data.get("Monthly Adjusted Time Series", {})
         result = []
         for date, vals in sorted(series.items()):
             if date >= start_date:
