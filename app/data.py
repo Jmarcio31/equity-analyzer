@@ -1,18 +1,21 @@
-import yfinance as yf
 import pandas as pd
 
-# Configura User-Agent para simular navegador e evitar bloqueio do Yahoo Finance
+# ── Tenta usar curl_cffi (mais resistente a bloqueios) ────────────────────────
 try:
-    yf.set_config(user_agent=(
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36"
-    ))
+    from curl_cffi import requests as curl_requests
+    _CURL_SESSION = curl_requests.Session(impersonate="chrome110")
+    import yfinance as yf
+    _USE_CURL = True
 except Exception:
-    pass
+    _USE_CURL = False
+    import yfinance as yf
 
 def _ticker(symbol):
+    if _USE_CURL:
+        return yf.Ticker(symbol, session=_CURL_SESSION)
     return yf.Ticker(symbol)
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 def _safe(df, *keys):
     if df is None or df.empty:
@@ -56,8 +59,6 @@ def fetch_company_profile(ticker):
         price = (info.get("currentPrice")
               or info.get("regularMarketPrice")
               or info.get("previousClose")
-              or info.get("ask")
-              or info.get("bid")
               or 0)
 
         if not price:
@@ -73,7 +74,7 @@ def fetch_company_profile(ticker):
             "currency":         info.get("currency", "USD"),
             "exchangeShortName":info.get("exchange", ""),
             "description":      (info.get("longBusinessSummary") or "")[:300],
-            "sharesOutstanding":info.get("sharesOutstanding") or info.get("impliedSharesOutstanding") or 0,
+            "sharesOutstanding":info.get("sharesOutstanding") or 0,
         }
     except Exception:
         return {"companyName": ticker, "price": 0, "sector": "", "industry": "",
@@ -106,9 +107,7 @@ def fetch_quarterly_financials(ticker, quarters=45):
         dates = dates[-quarters:]
 
     info       = t.info or {}
-    shares_ref = (info.get("sharesOutstanding")
-               or info.get("impliedSharesOutstanding")
-               or 1)
+    shares_ref = info.get("sharesOutstanding") or 1
 
     rows = []
     for date in dates:
@@ -138,7 +137,6 @@ def fetch_quarterly_financials(ticker, quarters=45):
                                "Other Short Term Investments",
                                "Available For Sale Securities"), date)
         cash_total = max(cash_eq, cash_st)
-
         total_debt = _v(_safe(bs, "Total Debt", "Long Term Debt And Capital Lease Obligation",
                                "Long Term Debt"), date)
         goodwill   = _v(_safe(bs, "Goodwill"), date)
