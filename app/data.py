@@ -1,33 +1,18 @@
 import yfinance as yf
 import pandas as pd
-import requests
 
-# ── Sessão customizada que simula navegador real ──────────────────────────────
-def _make_session():
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        ),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Accept-Encoding": "gzip, deflate, br",
-        "DNT": "1",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-    })
-    return session
-
-_SESSION = _make_session()
+# Configura User-Agent para simular navegador e evitar bloqueio do Yahoo Finance
+try:
+    yf.set_config(user_agent=(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ))
+except Exception:
+    pass
 
 def _ticker(symbol):
-    """Cria Ticker com sessão customizada para evitar bloqueio do Yahoo."""
-    t = yf.Ticker(symbol, session=_SESSION)
-    return t
-
-# ─────────────────────────────────────────────────────────────────────────────
+    return yf.Ticker(symbol)
 
 def _safe(df, *keys):
     if df is None or df.empty:
