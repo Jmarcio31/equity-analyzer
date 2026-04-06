@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Equity Analyzer — Análise Fundamentalista</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="app">
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">📊</span>
+        <span class="logo-text">Equity Analyzer</span>
+        <span class="logo-sub">Análise Fundamentalista por Jmarcio31</span>
+      </div>
+      <div class="search-bar">
+        <div class="ticker-inputs">
+          <input class="ticker-input" id="t1" placeholder="GOOGL" maxlength="6">
+          <input class="ticker-input" id="t2" placeholder="AAPL" maxlength="6">
+          <input class="ticker-input" id="t3" placeholder="META" maxlength="6">
+        </div>
+        <button class="btn-analyze" id="btn-analyze" onclick="runAnalysis()">
+          <span id="btn-text">Analisar</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main class="main">
+    <div id="landing" class="landing">
+      <div class="landing-content">
+        <h1>Análise Fundamentalista Profunda</h1>
+        <p>45 trimestres de dados · ROIC · EVA · FCF · Graham · Margem de Segurança</p>
+        <div class="landing-chips">
+          <span class="chip" onclick="setTickers('GOOGL','AAPL','META')">GOOGL · AAPL · META</span>
+          <span class="chip" onclick="setTickers('NVDA','MSFT','AMZN')">NVDA · MSFT · AMZN</span>
+          <span class="chip" onclick="setTickers('TSLA','BRK-B','JPM')">TSLA · BRK-B · JPM</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="error-box" class="error-box hidden"></div>
+    <div id="loading" class="loading hidden">
+      <div class="spinner"></div>
+      <p>Buscando dados no Financial Modeling Prep…</p>
+    </div>
+
+    <div id="results" class="results hidden"></div>
+  </main>
+
+</div>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
