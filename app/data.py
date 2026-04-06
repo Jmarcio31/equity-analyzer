@@ -2,7 +2,6 @@ import yfinance as yf
 import pandas as pd
 
 def _safe(df, *keys):
-    """Busca uma linha no DataFrame por múltiplos nomes alternativos."""
     if df is None or df.empty:
         return None
     for k in keys:
@@ -11,7 +10,6 @@ def _safe(df, *keys):
     return None
 
 def _v(series, date):
-    """Pega valor de uma série para uma data específica, retorna 0 se ausente."""
     if series is None:
         return 0.0
     try:
@@ -21,7 +19,6 @@ def _v(series, date):
         return 0.0
 
 def _ttm(df, date, dates, *keys):
-    """Soma TTM (4 trimestres) de uma ou mais métricas."""
     series = _safe(df, *keys)
     if series is None:
         return 0.0
@@ -37,13 +34,29 @@ def _ttm(df, date, dates, *keys):
             pass
     return total
 
+
 def fetch_company_profile(ticker):
     try:
         t    = yf.Ticker(ticker)
         info = t.info or {}
+
+        # Tenta múltiplos campos de preço
+        price = (info.get("currentPrice")
+              or info.get("regularMarketPrice")
+              or info.get("previousClose")
+              or info.get("ask")
+              or info.get("bid")
+              or 0)
+
+        # Se ainda zero, tenta via histórico recente
+        if not price:
+            hist = t.history(period="2d")
+            if not hist.empty:
+                price = float(hist["Close"].iloc[-1])
+
         return {
             "companyName":      info.get("longName") or info.get("shortName", ticker),
-            "price":            info.get("currentPrice") or info.get("regularMarketPrice") or 0,
+            "price":            float(price),
             "sector":           info.get("sector", ""),
             "industry":         info.get("industry", ""),
             "currency":         info.get("currency", "USD"),
@@ -51,36 +64,57 @@ def fetch_company_profile(ticker):
             "description":      (info.get("longBusinessSummary") or "")[:300],
             "sharesOutstanding":info.get("sharesOutstanding") or info.get("impliedSharesOutstanding") or 0,
         }
-    except Exception:
+    except Exception as e:
         return {"companyName": ticker, "price": 0, "sector": "", "industry": "",
                 "currency": "USD", "exchangeShortName": "", "description": "", "sharesOutstanding": 0}
+
 
 def fetch_quarterly_financials(ticker, quarters=45):
     t = yf.Ticker(ticker)
 
-    inc = t.quarterly_income_stmt
-    bs  = t.quarterly_balance_sheet
-    cf  = t.quarterly_cashflow
+    # Tenta primeiro o histórico longo via get_income_stmt
+    try:
+        inc = t.get_income_stmt(freq="quarterly", trailing=False)
+    except Exception:
+        inc = t.quarterly_income_stmt
+
+    try:
+        bs = t.get_balance_sheet(freq="quarterly", trailing=False)
+    except Exception:
+        bs = t.quarterly_balance_sheet
+
+    try:
+        cf = t.get_cash_flow(freq="quarterly", trailing=False)
+    except Exception:
+        cf = t.quarterly_cashflow
 
     if inc is None or inc.empty:
         return []
 
-    # Datas disponíveis ordenadas do mais antigo ao mais recente
     dates = sorted(inc.columns.tolist())
     if len(dates) > quarters:
         dates = dates[-quarters:]
 
-    # Shares fallback
     info       = t.info or {}
-    shares_ref = info.get("sharesOutstanding") or info.get("impliedSharesOutstanding") or 1
+    shares_ref = (info.get("sharesOutstanding")
+               or info.get("impliedSharesOutstanding")
+               or 1)
+
+    # Tenta pegar preço aqui para ter shares mais recentes
+    price = (info.get("currentPrice") or info.get("regularMarketPrice") or 0)
+    if not price:
+        try:
+            hist = t.history(period="2d")
+            if not hist.empty:
+                price = float(hist["Close"].iloc[-1])
+        except Exception:
+            pass
 
     rows = []
     for date in dates:
-        # Shares — tenta balanço primeiro
         sh_series = _safe(bs, "Ordinary Shares Number", "Share Issued", "Common Stock")
         shares    = _v(sh_series, date) or shares_ref
 
-        # ── Income Statement TTM ──────────────────────────────────────────
         revenue    = _ttm(inc, date, dates, "Total Revenue", "Revenue")
         ebit       = _ttm(inc, date, dates, "Operating Income", "EBIT", "Ebit")
         net_income = _ttm(inc, date, dates, "Net Income", "Net Income Common Stockholders")
@@ -92,40 +126,35 @@ def fetch_quarterly_financials(ticker, quarters=45):
         tax_exp    = _ttm(inc, date, dates, "Tax Provision", "Income Tax Expense")
         ebt        = _ttm(inc, date, dates, "Pretax Income", "Income Before Tax") or 1
 
-        # ── Cash Flow TTM ─────────────────────────────────────────────────
-        ocf       = _ttm(cf, date, dates, "Operating Cash Flow", "Cash Flow From Operations")
-        capex     = _ttm(cf, date, dates, "Capital Expenditure", "Purchase Of PPE",
-                         "Capital Expenditures")
-        dividends = _ttm(cf, date, dates, "Common Stock Dividend Paid",
-                         "Cash Dividends Paid", "Payment Of Dividends")
-        repurchase= _ttm(cf, date, dates, "Repurchase Of Capital Stock",
-                         "Common Stock Repurchase", "Purchase Of Business")
+        ocf        = _ttm(cf, date, dates, "Operating Cash Flow", "Cash Flow From Operations")
+        capex      = _ttm(cf, date, dates, "Capital Expenditure", "Purchase Of PPE", "Capital Expenditures")
+        dividends  = _ttm(cf, date, dates, "Common Stock Dividend Paid",
+                          "Cash Dividends Paid", "Payment Of Dividends")
+        repurchase = _ttm(cf, date, dates, "Repurchase Of Capital Stock",
+                          "Common Stock Repurchase", "Purchase Of Business")
 
-        # ── Balance Sheet (ponto) ─────────────────────────────────────────
-        cash_eq   = _v(_safe(bs, "Cash And Cash Equivalents", "Cash"), date)
-        cash_st   = _v(_safe(bs, "Other Short Term Investments",
-                              "Available For Sale Securities",
-                              "Cash Cash Equivalents And Short Term Investments"), date)
-        # Se cash_st já inclui cash_eq, não somar novamente
-        cash_total= max(cash_eq, cash_st)
+        cash_eq    = _v(_safe(bs, "Cash And Cash Equivalents", "Cash"), date)
+        cash_st    = _v(_safe(bs, "Cash Cash Equivalents And Short Term Investments",
+                               "Other Short Term Investments",
+                               "Available For Sale Securities"), date)
+        cash_total = max(cash_eq, cash_st)
 
-        total_debt= _v(_safe(bs, "Total Debt", "Long Term Debt And Capital Lease Obligation",
-                              "Long Term Debt"), date)
-        goodwill  = _v(_safe(bs, "Goodwill"), date)
-        intang_raw= _v(_safe(bs, "Goodwill And Other Intangible Assets",
-                              "Other Intangible Assets"), date)
-        intang    = max(intang_raw - goodwill, 0)
-        equity    = _v(_safe(bs, "Stockholders Equity", "Total Equity Gross Minority Interest",
-                              "Common Stock Equity"), date) or 1
-        cur_assets= _v(_safe(bs, "Current Assets", "Total Current Assets"), date)
-        cur_liab  = _v(_safe(bs, "Current Liabilities", "Total Current Liabilities"), date)
-        ppe       = _v(_safe(bs, "Net PPE", "Net Property Plant And Equipment"), date)
-        tot_assets= _v(_safe(bs, "Total Assets"), date) or 1
+        total_debt = _v(_safe(bs, "Total Debt", "Long Term Debt And Capital Lease Obligation",
+                               "Long Term Debt"), date)
+        goodwill   = _v(_safe(bs, "Goodwill"), date)
+        intang_raw = _v(_safe(bs, "Goodwill And Other Intangible Assets",
+                               "Other Intangible Assets"), date)
+        intang     = max(intang_raw - goodwill, 0)
+        equity     = _v(_safe(bs, "Stockholders Equity", "Total Equity Gross Minority Interest",
+                               "Common Stock Equity"), date) or 1
+        cur_assets = _v(_safe(bs, "Current Assets", "Total Current Assets"), date)
+        cur_liab   = _v(_safe(bs, "Current Liabilities", "Total Current Liabilities"), date)
+        ppe        = _v(_safe(bs, "Net PPE", "Net Property Plant And Equipment"), date)
+        tot_assets = _v(_safe(bs, "Total Assets"), date) or 1
 
-        # ── Cálculos ──────────────────────────────────────────────────────
-        nwc            = (cur_assets - cash_total) - (cur_liab - total_debt)
-        invested_cap   = nwc + ppe + goodwill + intang
-        invested_cap_ex= max(invested_cap - goodwill, 1)
+        nwc             = (cur_assets - cash_total) - (cur_liab - total_debt)
+        invested_cap    = nwc + ppe + goodwill + intang
+        invested_cap_ex = max(invested_cap - goodwill, 1)
 
         eff_tax     = max(0.0, min(tax_exp / ebt if ebt else 0.21, 0.5))
         nopat       = ebit * (1 - eff_tax)
@@ -191,14 +220,12 @@ def fetch_quarterly_financials(ticker, quarters=45):
         }
         rows.append(row)
 
-    # ROIIC (1 ano = 4 trimestres)
     for i in range(len(rows)):
         if i >= 4:
             dn = rows[i]["nopat_abs"] - rows[i-4]["nopat_abs"]
             di = rows[i]["invested_cap_abs"] - rows[i-4]["invested_cap_abs"]
             rows[i]["roiic_1y"] = dn / di if di else None
 
-    # CAGRs
     for field, out in [
         ("ebit_ps","_ebit_cagr"), ("fcf_sbc_ps","_fcf_cagr"),
         ("econ_profit_ps","_ep_cagr"), ("dividend_ps","_div_cagr"),
@@ -303,3 +330,21 @@ def analyze_ticker(ticker):
         "valuation":val,
         "quarters": [r["date"] for r in rows],
     }
+
+
+def fetch_price_history(ticker, start_date, end_date=None):
+    """Busca preço histórico diário para o período dos trimestres."""
+    try:
+        t    = yf.Ticker(ticker)
+        hist = t.history(start=start_date, end=end_date, interval="1d", auto_adjust=True)
+        if hist.empty:
+            return []
+        result = []
+        for date, row in hist.iterrows():
+            result.append({
+                "date":  str(date)[:10],
+                "close": float(row["Close"]),
+            })
+        return result
+    except Exception:
+        return []

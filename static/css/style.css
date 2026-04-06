@@ -184,3 +184,73 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
   .valuation-grid { grid-template-columns: repeat(2, 1fr); }
   .ticker-main-input { width: 150px; }
 }
+
+/* ── Scrollbar visível na tabela ── */
+.data-table-wrap {
+  overflow-x: scroll !important;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.data-table-wrap::-webkit-scrollbar {
+  height: 8px;
+  width: 6px;
+}
+.data-table-wrap::-webkit-scrollbar-track {
+  background: var(--surface2);
+  border-radius: 4px;
+}
+.data-table-wrap::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+.data-table-wrap::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+.data-table {
+  min-width: max-content;
+}
+
+/* ── Gráfico largo de preço ── */
+.chart-card-wide {
+  grid-column: 1 / -1;
+  margin-bottom: 4px;
+}
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.chart-toggles {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.tog-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--text3);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  user-select: none;
+  opacity: 0.45;
+}
+.tog-btn.tog-active {
+  opacity: 1;
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--surface2);
+}
+.tog-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}

@@ -318,14 +318,28 @@ function buildValuationPanel(r, v) {
 // ─── Charts Panel ─────────────────────────────────────────────────────────────
 function buildChartsPanel(r) {
   const id = r.ticker;
-  return `<div class="charts-grid">
-    <div class="chart-card"><div class="chart-title">EBIT por Ação (TTM)</div><canvas class="chart-canvas" id="ch-ebit-${id}"></canvas></div>
-    <div class="chart-card"><div class="chart-title">FCF − SBC por Ação (TTM)</div><canvas class="chart-canvas" id="ch-fcf-${id}"></canvas></div>
-    <div class="chart-card"><div class="chart-title">Economic Profit por Ação (TTM)</div><canvas class="chart-canvas" id="ch-ep-${id}"></canvas></div>
-    <div class="chart-card"><div class="chart-title">ROIC vs WACC</div><canvas class="chart-canvas" id="ch-roic-${id}"></canvas></div>
-    <div class="chart-card"><div class="chart-title">Receita por Ação (TTM)</div><canvas class="chart-canvas" id="ch-rev-${id}"></canvas></div>
-    <div class="chart-card"><div class="chart-title">Dívida Líquida / FCF (anos)</div><canvas class="chart-canvas" id="ch-lev-${id}"></canvas></div>
-  </div>`;
+  return `
+    <div class="chart-card chart-card-wide">
+      <div class="chart-header">
+        <div class="chart-title">📈 Preço × Métricas Fundamentalistas</div>
+        <div class="chart-toggles" id="tog-${id}">
+          <label class="tog-btn tog-active" data-metric="ebit"><span class="tog-dot" style="background:#4f7cff"></span>EBIT/ação</label>
+          <label class="tog-btn tog-active" data-metric="ep"><span class="tog-dot" style="background:#a78bfa"></span>Eco. Profit/ação</label>
+          <label class="tog-btn tog-active" data-metric="fcf"><span class="tog-dot" style="background:#22c55e"></span>FCF-SBC/ação</label>
+          <label class="tog-btn" data-metric="graham_ebit"><span class="tog-dot" style="background:#f59e0b"></span>Graham EBIT</label>
+          <label class="tog-btn" data-metric="graham_ep"><span class="tog-dot" style="background:#fb923c"></span>Graham EP</label>
+        </div>
+      </div>
+      <canvas style="max-height:320px" id="ch-price-${id}"></canvas>
+    </div>
+    <div class="charts-grid">
+      <div class="chart-card"><div class="chart-title">EBIT por Ação (TTM)</div><canvas class="chart-canvas" id="ch-ebit-${id}"></canvas></div>
+      <div class="chart-card"><div class="chart-title">FCF − SBC por Ação (TTM)</div><canvas class="chart-canvas" id="ch-fcf-${id}"></canvas></div>
+      <div class="chart-card"><div class="chart-title">Economic Profit por Ação (TTM)</div><canvas class="chart-canvas" id="ch-ep-${id}"></canvas></div>
+      <div class="chart-card"><div class="chart-title">ROIC vs WACC</div><canvas class="chart-canvas" id="ch-roic-${id}"></canvas></div>
+      <div class="chart-card"><div class="chart-title">Receita por Ação (TTM)</div><canvas class="chart-canvas" id="ch-rev-${id}"></canvas></div>
+      <div class="chart-card"><div class="chart-title">Dívida Líquida / FCF (anos)</div><canvas class="chart-canvas" id="ch-lev-${id}"></canvas></div>
+    </div>`;
 }
 
 function renderCharts(ticker) {
@@ -360,6 +374,150 @@ function renderCharts(ticker) {
   makeChart(`ch-roic-${ticker}`, [ds('ROIC', rows.map(r=>r.roic), color), ds('WACC', rows.map(r=>r.wacc), '#ef4444')], true);
   makeChart(`ch-rev-${ticker}`,  [ds('Receita/ação', rows.map(r=>r.revenue_ps), '#f59e0b', true)]);
   makeChart(`ch-lev-${ticker}`,  [ds('Net Debt/FCF', rows.map(r=>r.net_debt_fcf), '#f87171')]);
+
+  // ── Gráfico combinado: Preço × Métricas ──────────────────────────────
+  renderPriceChart(ticker, r, color);
+
+  // Toggle handlers
+  const togArea = document.getElementById(`tog-${ticker}`);
+  if (togArea) {
+    togArea.querySelectorAll('.tog-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        btn.classList.toggle('tog-active');
+        renderPriceChart(ticker, r, color);
+      });
+    });
+  }
+}
+
+function renderPriceChart(ticker, r, color) {
+  const canvas = document.getElementById(`ch-price-${ticker}`);
+  if (!canvas) return;
+
+  const priceHist = r.price_history || [];
+  const rows      = r.rows;
+  const val       = r.valuation;
+
+  // Preço diário
+  const priceDates  = priceHist.map(p => p.date);
+  const priceValues = priceHist.map(p => p.close);
+
+  // Métricas trimestrais — alinhadas à data do trimestre
+  const qDates = rows.map(rw => rw.date);
+  const metricMap = {
+    ebit:        { label: 'EBIT/ação',       color: '#4f7cff', data: rows.map(r=>r.ebit_ps) },
+    ep:          { label: 'Eco.Profit/ação', color: '#a78bfa', data: rows.map(r=>r.econ_profit_ps) },
+    fcf:         { label: 'FCF-SBC/ação',    color: '#22c55e', data: rows.map(r=>r.fcf_sbc_ps) },
+    graham_ebit: { label: 'Graham (EBIT)',   color: '#f59e0b', data: rows.map(r => {
+      const cagr = r._ebit_cagr != null ? r._ebit_cagr * 100 : (val.ebit_cagr||0)*100;
+      const y    = val.treasury_yield * 100 || 4.28;
+      return r.ebit_ps > 0 ? r.ebit_ps * (8.5 + 2*cagr) * 4.4/y : null;
+    })},
+    graham_ep:   { label: 'Graham (EP)',     color: '#fb923c', data: rows.map(r => {
+      const cagr = (val.ep_cagr||0)*100;
+      const y    = val.treasury_yield * 100 || 4.28;
+      return r.econ_profit_ps > 0 ? r.econ_profit_ps * (8.5 + 2*cagr) * 4.4/y : null;
+    })},
+  };
+
+  // Quais métricas estão ativas
+  const togArea  = document.getElementById(`tog-${ticker}`);
+  const active   = new Set();
+  if (togArea) togArea.querySelectorAll('.tog-btn.tog-active').forEach(b => active.add(b.dataset.metric));
+
+  // Dataset do preço (eixo y principal)
+  const datasets = [{
+    label:           'Preço',
+    data:            priceValues,
+    borderColor:     color,
+    backgroundColor: color + '18',
+    borderWidth:     2,
+    pointRadius:     0,
+    tension:         0.2,
+    fill:            true,
+    yAxisID:         'yPrice',
+    order:           0,
+  }];
+
+  // Datasets das métricas (eixo y secundário, escalado)
+  for (const [key, m] of Object.entries(metricMap)) {
+    if (!active.has(key)) continue;
+    datasets.push({
+      label:       m.label,
+      data:        m.data,
+      borderColor: m.color,
+      backgroundColor: 'transparent',
+      borderWidth: 1.5,
+      borderDash:  [5, 3],
+      pointRadius: 3,
+      pointBackgroundColor: m.color,
+      tension:     0.3,
+      fill:        false,
+      yAxisID:     'yMetric',
+      order:       1,
+      // Alinha às datas dos trimestres
+    });
+    // Corrige labels para usar datas dos trimestres para métricas
+    datasets[datasets.length-1]._qDates = qDates;
+  }
+
+  if (chartInstances[`ch-price-${ticker}`]) chartInstances[`ch-price-${ticker}`].destroy();
+
+  // Usa datas do preço para eixo X, mas plota métricas nas datas dos trimestres
+  // Estratégia: dataset de preço usa priceDates, métricas usam qDates
+  // Chart.js suporta dados como {x, y} para datasets com datas diferentes
+
+  const priceDataXY  = priceHist.map(p => ({x: p.date, y: p.close}));
+
+  const metricDatasets = datasets.slice(1).map(d => {
+    const qd = d._qDates || qDates;
+    return {
+      ...d,
+      data: d.data.map((v, i) => ({x: qd[i], y: v})),
+    };
+  });
+
+  chartInstances[`ch-price-${ticker}`] = new Chart(canvas, {
+    type: 'line',
+    data: { datasets: [{ ...datasets[0], data: priceDataXY }, ...metricDatasets] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, labels: { color: '#94a3b8', font: { size: 11 }, usePointStyle: true } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const v = ctx.parsed.y;
+              if (v == null) return null;
+              return `${ctx.dataset.label}: $${v.toFixed(2)}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'time',
+          time: { unit: 'month', displayFormats: { month: 'MMM yy' } },
+          ticks: { color: '#64748b', maxTicksLimit: 10, font: { size: 9 } },
+          grid:  { color: '#2d3150' },
+        },
+        yPrice: {
+          type: 'linear', position: 'left',
+          ticks: { color: '#94a3b8', font: { size: 9 }, callback: v => '$'+v.toFixed(0) },
+          grid:  { color: '#2d3150' },
+          title: { display: true, text: 'Preço ($)', color: '#64748b', font: { size: 10 } },
+        },
+        yMetric: {
+          type: 'linear', position: 'right',
+          ticks: { color: '#64748b', font: { size: 9 }, callback: v => '$'+v.toFixed(1) },
+          grid:  { drawOnChartArea: false },
+          title: { display: true, text: 'Métricas / Ação ($)', color: '#64748b', font: { size: 10 } },
+        },
+      }
+    }
+  });
 }
 
 // ─── 45Q Table ────────────────────────────────────────────────────────────────
