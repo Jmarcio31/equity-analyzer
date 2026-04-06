@@ -1,5 +1,33 @@
 import yfinance as yf
 import pandas as pd
+import requests
+
+# ── Sessão customizada que simula navegador real ──────────────────────────────
+def _make_session():
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate, br",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+    })
+    return session
+
+_SESSION = _make_session()
+
+def _ticker(symbol):
+    """Cria Ticker com sessão customizada para evitar bloqueio do Yahoo."""
+    t = yf.Ticker(symbol, session=_SESSION)
+    return t
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 def _safe(df, *keys):
     if df is None or df.empty:
@@ -37,10 +65,9 @@ def _ttm(df, date, dates, *keys):
 
 def fetch_company_profile(ticker):
     try:
-        t    = yf.Ticker(ticker)
+        t    = _ticker(ticker)
         info = t.info or {}
 
-        # Tenta múltiplos campos de preço
         price = (info.get("currentPrice")
               or info.get("regularMarketPrice")
               or info.get("previousClose")
@@ -48,7 +75,6 @@ def fetch_company_profile(ticker):
               or info.get("bid")
               or 0)
 
-        # Se ainda zero, tenta via histórico recente
         if not price:
             hist = t.history(period="2d")
             if not hist.empty:
@@ -64,15 +90,14 @@ def fetch_company_profile(ticker):
             "description":      (info.get("longBusinessSummary") or "")[:300],
             "sharesOutstanding":info.get("sharesOutstanding") or info.get("impliedSharesOutstanding") or 0,
         }
-    except Exception as e:
+    except Exception:
         return {"companyName": ticker, "price": 0, "sector": "", "industry": "",
                 "currency": "USD", "exchangeShortName": "", "description": "", "sharesOutstanding": 0}
 
 
 def fetch_quarterly_financials(ticker, quarters=45):
-    t = yf.Ticker(ticker)
+    t = _ticker(ticker)
 
-    # Tenta primeiro o histórico longo via get_income_stmt
     try:
         inc = t.get_income_stmt(freq="quarterly", trailing=False)
     except Exception:
@@ -99,16 +124,6 @@ def fetch_quarterly_financials(ticker, quarters=45):
     shares_ref = (info.get("sharesOutstanding")
                or info.get("impliedSharesOutstanding")
                or 1)
-
-    # Tenta pegar preço aqui para ter shares mais recentes
-    price = (info.get("currentPrice") or info.get("regularMarketPrice") or 0)
-    if not price:
-        try:
-            hist = t.history(period="2d")
-            if not hist.empty:
-                price = float(hist["Close"].iloc[-1])
-        except Exception:
-            pass
 
     rows = []
     for date in dates:
@@ -244,6 +259,18 @@ def fetch_quarterly_financials(ticker, quarters=45):
     return rows
 
 
+def fetch_price_history(ticker, start_date, end_date=None):
+    try:
+        t    = _ticker(ticker)
+        hist = t.history(start=start_date, end=end_date, interval="1d", auto_adjust=True)
+        if hist.empty:
+            return []
+        return [{"date": str(d)[:10], "close": float(r["Close"])}
+                for d, r in hist.iterrows()]
+    except Exception:
+        return []
+
+
 def compute_valuation(rows, price, treasury_yield=0.0428):
     if not rows:
         return {}
@@ -301,7 +328,7 @@ def compute_valuation(rows, price, treasury_yield=0.0428):
 
 def fetch_treasury_yield():
     try:
-        t    = yf.Ticker("^TNX")
+        t    = _ticker("^TNX")
         hist = t.history(period="5d")
         if not hist.empty:
             return float(hist["Close"].iloc[-1]) / 100
@@ -330,21 +357,3 @@ def analyze_ticker(ticker):
         "valuation":val,
         "quarters": [r["date"] for r in rows],
     }
-
-
-def fetch_price_history(ticker, start_date, end_date=None):
-    """Busca preço histórico diário para o período dos trimestres."""
-    try:
-        t    = yf.Ticker(ticker)
-        hist = t.history(start=start_date, end=end_date, interval="1d", auto_adjust=True)
-        if hist.empty:
-            return []
-        result = []
-        for date, row in hist.iterrows():
-            result.append({
-                "date":  str(date)[:10],
-                "close": float(row["Close"]),
-            })
-        return result
-    except Exception:
-        return []
