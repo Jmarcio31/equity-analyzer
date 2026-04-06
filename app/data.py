@@ -38,7 +38,8 @@ def fetch_company_profile(ticker):
             "currency": "USD", "exchangeShortName": "", "description": ""}
 
 
-def fetch_quarterly_financials(ticker, quarters=45):
+def fetch_quarterly_financials(ticker, quarters=20):
+    quarters = min(quarters, 20)
     inc = _get(f"income-statement/{ticker}",       {"period": "quarter", "limit": quarters})
     bs  = _get(f"balance-sheet-statement/{ticker}", {"period": "quarter", "limit": quarters})
     cf  = _get(f"cash-flow-statement/{ticker}",    {"period": "quarter", "limit": quarters})
@@ -168,7 +169,7 @@ def fetch_quarterly_financials(ticker, quarters=45):
         ("revenue_ps", "_rev_cagr"),
     ]:
         for idx in range(len(rows)):
-            for yrs in [10, 5, 3]:
+            for yrs in [5, 3]:
                 lb = yrs * 4
                 if idx >= lb:
                     v0 = rows[idx - lb][field]
@@ -247,7 +248,7 @@ def fetch_treasury_yield():
 def analyze_ticker(ticker):
     ticker   = ticker.upper().strip()
     profile  = fetch_company_profile(ticker)
-    rows     = fetch_quarterly_financials(ticker, quarters=45)
+    rows     = fetch_quarterly_financials(ticker, quarters=20)
     price    = profile.get("price") or 0
     treasury = fetch_treasury_yield()
     val      = compute_valuation(rows, price, treasury)
