@@ -133,6 +133,77 @@ function showHeaderSelection() {
   if (el) el.style.display = 'flex';
 }
 
+// ─── Painel de progresso de carga ────────────────────────────────────────────
+async function checkLoadProgress() {
+  try {
+    const r = await fetch('/api/quota-check');
+    const d = await r.json();
+    showProgressPanel(d);
+  } catch(e) { console.log('Erro ao verificar progresso:', e); }
+}
+
+function showProgressPanel(d) {
+  // Remove painel anterior se existir
+  document.getElementById('progress-panel')?.remove();
+
+  const pct = Math.round((d.loaded / d.tickers.length) * 100);
+  const pending = d.tickers.filter(t => !t.has_data);
+  const loaded  = d.tickers.filter(t => t.has_data);
+
+  const panel = document.createElement('div');
+  panel.id = 'progress-panel';
+  panel.className = 'progress-panel';
+  panel.innerHTML = `
+    <div class="progress-header">
+      <span class="progress-title">📥 Progresso da Carga de Dados</span>
+      <button onclick="document.getElementById('progress-panel').remove()" class="progress-close">✕</button>
+    </div>
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-fill" style="width:${pct}%"></div>
+    </div>
+    <div class="progress-stats">
+      <span class="stat-ok">✅ ${loaded.length} carregados</span>
+      <span class="stat-pending">⏳ ${pending.length} pendentes</span>
+      <span class="stat-info">~${d.max_per_day} tickers/dia · ${Math.ceil(pending.length / d.max_per_day)} dias restantes</span>
+    </div>
+    ${pending.length > 0 ? `
+    <div class="progress-pending-list">
+      <div class="progress-pending-title">Pendentes (clique para carregar — máx. 6 por dia):</div>
+      <div class="progress-chips">
+        ${pending.map(t => `<span class="progress-chip" onclick="loadSingle('${t.symbol}')">${t.symbol}</span>`).join('')}
+      </div>
+    </div>` : '<div style="color:var(--green);text-align:center;padding:8px;font-weight:600">🎉 Todos os tickers carregados!</div>'}
+  `;
+
+  document.querySelector('.main').prepend(panel);
+}
+
+async function loadSingle(symbol) {
+  const chip = document.querySelector(`.progress-chip[onclick="loadSingle('${symbol}')"]`);
+  if (chip) { chip.textContent = '⏳ ' + symbol; chip.style.opacity = '0.6'; chip.onclick = null; }
+
+  try {
+    const r = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tickers: [symbol]})
+    });
+    const d = await r.json();
+    if (d.errors?.length) {
+      if (chip) { chip.textContent = '❌ ' + symbol; chip.style.background = '#7f1d1d'; }
+      alert(`${symbol}: ${d.errors[0].error}`);
+    } else {
+      if (chip) { chip.textContent = '✅ ' + symbol; chip.style.background = '#14532d'; chip.style.opacity = '1'; }
+      setTimeout(() => checkLoadProgress(), 500);
+    }
+  } catch(e) {
+    if (chip) { chip.textContent = '❌ ' + symbol; chip.style.background = '#7f1d1d'; }
+  }
+}
+
+// Verifica progresso ao carregar a página
+document.addEventListener('DOMContentLoaded', () => checkLoadProgress());
+
 // ─── Main analysis ────────────────────────────────────────────────────────────
 async function runAnalysis() {
   const tickers = selectedTickers.map(t => t.symbol);

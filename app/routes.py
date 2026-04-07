@@ -119,4 +119,34 @@ def analyze():
 @main.route("/api/status")
 def api_status():
     """Painel de status de atualizações."""
-    return jsonify(db.get_update_status())
+    status = db.get_update_status()
+    # Conta tickers com dados carregados
+    loaded = sum(1 for s in db.get_update_status() if s.get("update_type") == "quarterly" and s.get("status") == "ok")
+    total  = len(TICKERS)
+    return jsonify({
+        "updates": status,
+        "loaded_tickers": loaded,
+        "total_tickers": total,
+        "remaining": total - loaded
+    })
+
+
+@main.route("/api/quota-check")
+def quota_check():
+    """Verifica quantos tickers já têm dados no banco."""
+    result = []
+    for t in TICKERS:
+        result.append({
+            "symbol":   t["symbol"],
+            "name":     t["name"],
+            "has_data": db.has_financials(t["symbol"]),
+        })
+    loaded = sum(1 for r in result if r["has_data"])
+    return jsonify({
+        "tickers": result,
+        "loaded": loaded,
+        "pending": len(result) - loaded,
+        "req_per_ticker": 4,
+        "daily_limit": 25,
+        "max_per_day": 6,  # 25 req / 4 req por ticker = 6 tickers/dia (com margem)
+    })
