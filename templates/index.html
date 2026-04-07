@@ -38,31 +38,40 @@
         <p class="landing-hint">ROIC · EVA · FCF · Fórmula de Graham · Margem de Segurança</p>
       </div>
 
-      <div class="ticker-grid" id="ticker-grid">
-        {% set ns = namespace(current_sector='') %}
-        {% for t in tickers %}
-          {% if t.sector != ns.current_sector %}
-            {% set ns.current_sector = t.sector %}
-            <div class="sector-label">{{ t.sector }}</div>
-          {% endif %}
-          <div class="ticker-card" id="card-{{ t.symbol }}"
-               data-symbol="{{ t.symbol }}"
-               data-color="{{ sector_colors.get(t.sector, '#4f7cff') }}"
-               onclick="toggleTicker('{{ t.symbol }}', '{{ t.name }}', '{{ sector_colors.get(t.sector, '#4f7cff') }}')">
-            <div class="ticker-card-symbol" style="color:{{ sector_colors.get(t.sector, '#4f7cff') }}">
-              {{ t.symbol }}
-            </div>
-            <div class="ticker-card-name">{{ t.name }}</div>
-            <div class="ticker-card-check">✓</div>
-          </div>
-        {% endfor %}
-      </div>
+      <div class="landing-body">
 
-      <div id="landing-action" class="landing-action" style="display:none">
-        <div id="selected-preview" class="selected-preview"></div>
-        <button class="btn-analyze-main" onclick="runAnalysis()">
-          <span id="btn-text-main">Analisar</span>
-        </button>
+        <div class="ticker-grid" id="ticker-grid">
+          {% set ns = namespace(current_sector='') %}
+          {% for t in tickers %}
+            {% if t.sector != ns.current_sector %}
+              {% set ns.current_sector = t.sector %}
+              <div class="sector-label">{{ t.sector }}</div>
+            {% endif %}
+            <div class="ticker-card" id="card-{{ t.symbol }}"
+                 data-symbol="{{ t.symbol }}"
+                 data-color="{{ sector_colors.get(t.sector, '#4f7cff') }}"
+                 onclick="toggleTicker('{{ t.symbol }}', '{{ t.name }}', '{{ sector_colors.get(t.sector, '#4f7cff') }}')">
+              <div class="ticker-card-symbol" style="color:{{ sector_colors.get(t.sector, '#4f7cff') }}">
+                {{ t.symbol }}
+              </div>
+              <div class="ticker-card-name">{{ t.name }}</div>
+              <div class="ticker-card-check" style="color:{{ sector_colors.get(t.sector, '#4f7cff') }}">✓</div>
+            </div>
+          {% endfor %}
+        </div>
+
+        <div class="landing-sidebar">
+          <div class="sidebar-title">Selecionadas</div>
+          <div id="selected-preview" class="selected-preview">
+            <div class="sidebar-hint">Clique nas ações<br>para selecionar</div>
+          </div>
+          <button class="btn-analyze-main" id="btn-analyze-main"
+                  onclick="runAnalysis()" disabled>
+            <span id="btn-text-main">Analisar</span>
+          </button>
+          <div class="sidebar-hint">Selecione até 3 ações<br>para comparar</div>
+        </div>
+
       </div>
     </div>
 

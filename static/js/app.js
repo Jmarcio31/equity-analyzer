@@ -29,24 +29,28 @@ function toggleTicker(symbol, name, color) {
 }
 
 function updateSelectionUI() {
-  const action = document.getElementById('landing-action');
-  const preview = document.getElementById('selected-preview');
+  const preview      = document.getElementById('selected-preview');
   const headerSelected = document.getElementById('header-selected');
-  const headerChips = document.getElementById('header-chips');
+  const headerChips  = document.getElementById('header-chips');
+  const btnMain      = document.getElementById('btn-analyze-main');
 
   if (selectedTickers.length === 0) {
-    action.style.display = 'none';
+    preview.innerHTML = '<div class="sidebar-hint">Clique nas ações<br>para selecionar</div>';
+    if (btnMain) btnMain.disabled = true;
     return;
   }
 
-  action.style.display = 'flex';
   preview.innerHTML = selectedTickers.map(t =>
-    `<div class="preview-chip" style="background:${t.color}">${t.symbol}</div>`
+    `<div class="preview-chip" style="background:${t.color}">${t.symbol} — ${t.name}</div>`
   ).join('');
 
-  headerChips.innerHTML = selectedTickers.map(t =>
-    `<div class="header-chip" style="background:${t.color}">${t.symbol}</div>`
-  ).join('');
+  if (btnMain) btnMain.disabled = false;
+
+  if (headerChips) {
+    headerChips.innerHTML = selectedTickers.map(t =>
+      `<div class="header-chip" style="background:${t.color}">${t.symbol}</div>`
+    ).join('');
+  }
 }
 
 function clearSelection() {
