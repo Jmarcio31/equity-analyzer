@@ -26,6 +26,8 @@ TICKERS = [
     {"symbol": "V",     "name": "Visa",                 "sector": "Financial"},
     {"symbol": "ITUB",  "name": "Itaú Unibanco",        "sector": "Financial"},
     {"symbol": "NU",    "name": "Nubank",               "sector": "Financial"},
+    {"symbol": "BBD",   "name": "Bradesco",              "sector": "Financial"},
+    {"symbol": "BDORY", "name": "Banco do Brasil",       "sector": "Financial"},
     {"symbol": "AXIA",  "name": "Eletrobrás (AXIA)",    "sector": "Energy"},
     # Healthcare
     {"symbol": "UNH",   "name": "UnitedHealth",         "sector": "Healthcare"},
