@@ -1,25 +1,63 @@
-// ─── Ticker suggestions database ─────────────────────────────────────────────
-const POPULAR = [
-  {s:'GOOGL',n:'Alphabet Inc.'},      {s:'AAPL',n:'Apple Inc.'},
-  {s:'META',n:'Meta Platforms'},       {s:'MSFT',n:'Microsoft'},
-  {s:'NVDA',n:'NVIDIA'},               {s:'AMZN',n:'Amazon'},
-  {s:'TSLA',n:'Tesla'},                {s:'BRK-B',n:'Berkshire Hathaway B'},
-  {s:'JPM',n:'JPMorgan Chase'},        {s:'V',n:'Visa'},
-  {s:'MA',n:'Mastercard'},             {s:'UNH',n:'UnitedHealth'},
-  {s:'XOM',n:'Exxon Mobil'},           {s:'JNJ',n:'Johnson & Johnson'},
-  {s:'WMT',n:'Walmart'},               {s:'NFLX',n:'Netflix'},
-  {s:'DIS',n:'Walt Disney'},           {s:'BABA',n:'Alibaba'},
-  {s:'TSM',n:'TSMC'},                  {s:'ASML',n:'ASML Holding'},
-  {s:'PETR4.SA',n:'Petrobras PN'},     {s:'VALE3.SA',n:'Vale ON'},
-  {s:'ITUB4.SA',n:'Itaú Unibanco PN'},{s:'BBDC4.SA',n:'Bradesco PN'},
-  {s:'WEGE3.SA',n:'WEG ON'},           {s:'RENT3.SA',n:'Localiza ON'},
-  {s:'ABEV3.SA',n:'Ambev ON'},         {s:'B3SA3.SA',n:'B3 ON'},
-];
-
 // ─── State ────────────────────────────────────────────────────────────────────
 let allResults = [];
-const COLORS = ['#4f7cff','#22c55e','#f59e0b'];
+let selectedTickers = []; // [{symbol, name, color}]
 const chartInstances = {};
+
+// ─── Ticker Card Selection ────────────────────────────────────────────────────
+function toggleTicker(symbol, name, color) {
+  const idx = selectedTickers.findIndex(t => t.symbol === symbol);
+  const card = document.getElementById(`card-${symbol}`);
+
+  if (idx >= 0) {
+    // Deseleciona
+    selectedTickers.splice(idx, 1);
+    card.classList.remove('selected');
+    card.style.borderColor = '';
+  } else {
+    if (selectedTickers.length >= 3) {
+      // Remove o mais antigo
+      const removed = selectedTickers.shift();
+      const oldCard = document.getElementById(`card-${removed.symbol}`);
+      if (oldCard) { oldCard.classList.remove('selected'); oldCard.style.borderColor = ''; }
+    }
+    selectedTickers.push({symbol, name, color});
+    card.classList.add('selected');
+    card.style.borderColor = color;
+    card.querySelector('.ticker-card-check').style.color = color;
+  }
+  updateSelectionUI();
+}
+
+function updateSelectionUI() {
+  const action = document.getElementById('landing-action');
+  const preview = document.getElementById('selected-preview');
+  const headerSelected = document.getElementById('header-selected');
+  const headerChips = document.getElementById('header-chips');
+
+  if (selectedTickers.length === 0) {
+    action.style.display = 'none';
+    return;
+  }
+
+  action.style.display = 'flex';
+  preview.innerHTML = selectedTickers.map(t =>
+    `<div class="preview-chip" style="background:${t.color}">${t.symbol}</div>`
+  ).join('');
+
+  headerChips.innerHTML = selectedTickers.map(t =>
+    `<div class="header-chip" style="background:${t.color}">${t.symbol}</div>`
+  ).join('');
+}
+
+function clearSelection() {
+  selectedTickers.forEach(t => {
+    const card = document.getElementById(`card-${t.symbol}`);
+    if (card) { card.classList.remove('selected'); card.style.borderColor = ''; }
+  });
+  selectedTickers = [];
+  updateSelectionUI();
+  goHome();
+}
 
 // ─── Format helpers ───────────────────────────────────────────────────────────
 const fmt = {
@@ -74,12 +112,7 @@ function goHome() {
   document.getElementById('results').classList.add('hidden');
   document.getElementById('error-box').classList.add('hidden');
   document.getElementById('landing').classList.remove('hidden');
-  document.getElementById('header-search').style.display = 'none';
-  // Clear inputs
-  [0,1,2].forEach(i => {
-    const inp = document.getElementById(`main-t${i}`);
-    if (inp) inp.value = '';
-  });
+  document.getElementById('header-selected').style.display = 'none';
   allResults = [];
 }
 
@@ -91,51 +124,15 @@ function setTickers(t0, t1, t2) {
 }
 
 // ─── Header search sync ───────────────────────────────────────────────────────
-function buildHeaderSearch(tickers) {
-  const container = document.getElementById('ticker-inputs-header');
-  container.innerHTML = tickers.map((t, i) => `
-    <div class="header-ticker-wrapper" style="position:relative">
-      <input class="header-ticker-input" id="h-t${i}" value="${t}" maxlength="10"
-        style="text-transform:uppercase"
-        oninput="this.value=this.value.toUpperCase()"
-        onkeydown="if(event.key==='Enter') runAnalysisFromHeader()">
-    </div>`).join('');
-  // Pad to 3 fields
-  for (let i = tickers.length; i < 3; i++) {
-    container.innerHTML += `<input class="header-ticker-input" id="h-t${i}" placeholder="+ ticker" maxlength="10"
-      style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"
-      onkeydown="if(event.key==='Enter') runAnalysisFromHeader()">`;
-  }
-  document.getElementById('header-search').style.display = 'flex';
+function showHeaderSelection() {
+  const el = document.getElementById('header-selected');
+  if (el) el.style.display = 'flex';
 }
-
-function runAnalysisFromHeader() {
-  const tickers = [0,1,2].map(i => {
-    const el = document.getElementById(`h-t${i}`);
-    return el ? el.value.trim().toUpperCase() : '';
-  }).filter(Boolean);
-  // Sync back to landing inputs
-  tickers.forEach((t, i) => {
-    const inp = document.getElementById(`main-t${i}`);
-    if (inp) inp.value = t;
-  });
-  runAnalysis();
-}
-
-// Replace btn-analyze-header onclick
-document.addEventListener('DOMContentLoaded', () => {
-  const btn = document.getElementById('btn-analyze-header');
-  if (btn) btn.onclick = runAnalysisFromHeader;
-});
 
 // ─── Main analysis ────────────────────────────────────────────────────────────
 async function runAnalysis() {
-  const tickers = [0,1,2]
-    .map(i => (document.getElementById(`main-t${i}`)?.value || '').trim().toUpperCase())
-    .filter(Boolean);
+  const tickers = selectedTickers.map(t => t.symbol);
   if (!tickers.length) return;
-
-  closeSuggestions();
   document.getElementById('landing').classList.add('hidden');
   document.getElementById('results').classList.add('hidden');
   document.getElementById('error-box').classList.add('hidden');
@@ -161,7 +158,7 @@ async function runAnalysis() {
     }
     if (data.results?.length) {
       allResults = data.results;
-      buildHeaderSearch(tickers);
+      showHeaderSelection();
       renderResults(data.results);
     }
   } catch(e) {
@@ -220,7 +217,7 @@ function buildComparisonPanel(results) {
 
 // ─── Company Card ─────────────────────────────────────────────────────────────
 function buildCompanyCard(r, idx) {
-  const color = COLORS[idx % COLORS.length];
+  const color = r.color || ['#4f7cff','#22c55e','#f59e0b'][idx % 3];
   const v = r.valuation;
   const card = document.createElement('div');
   card.className = 'company-card';
@@ -241,7 +238,7 @@ function buildCompanyCard(r, idx) {
     <div class="tabs" id="tabs-${r.ticker}">
       <button class="tab-btn active" onclick="switchTab('${r.ticker}','valuation',this)">📊 Valuation</button>
       <button class="tab-btn" onclick="switchTab('${r.ticker}','charts',this)">📈 Gráficos</button>
-      <button class="tab-btn" onclick="switchTab('${r.ticker}','table',this)">🗂 ${r.rows.length} Trimestres</button>
+      <button class="tab-btn" onclick="switchTab('${r.ticker}','table',this)">🗂 Trimestres (${r.rows.length})</button>
       <button class="tab-btn" onclick="switchTab('${r.ticker}','glossary',this)">📖 Glossário</button>
     </div>
     <div id="panel-${r.ticker}-valuation" class="tab-panel active">${buildValuationPanel(r, v)}</div>
@@ -347,7 +344,7 @@ function buildChartsPanel(r) {
 function renderCharts(ticker) {
   const r = allResults.find(x => x.ticker === ticker);
   if (!r) return;
-  const color = COLORS[allResults.indexOf(r) % COLORS.length];
+  const color = r.color || ['#4f7cff','#22c55e','#f59e0b'][allResults.indexOf(r) % 3];
   const rows   = r.rows;
   const labels = rows.map(rw => rw.date.slice(0,7));
 
