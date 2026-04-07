@@ -5,34 +5,43 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 TICKERS = [
-    # Tecnologia
+    # Technology
     {"symbol": "AAPL",  "name": "Apple Inc.",          "sector": "Technology"},
     {"symbol": "MSFT",  "name": "Microsoft",            "sector": "Technology"},
     {"symbol": "NVDA",  "name": "NVIDIA",               "sector": "Technology"},
     {"symbol": "GOOGL", "name": "Alphabet Inc.",        "sector": "Technology"},
     {"symbol": "META",  "name": "Meta Platforms",       "sector": "Technology"},
-    # Consumo / E-commerce
+    {"symbol": "ASML",  "name": "ASML Holding",         "sector": "Technology"},
+    # Consumer
     {"symbol": "AMZN",  "name": "Amazon",               "sector": "Consumer"},
     {"symbol": "TSLA",  "name": "Tesla",                "sector": "Consumer"},
     {"symbol": "WMT",   "name": "Walmart",              "sector": "Consumer"},
     {"symbol": "NFLX",  "name": "Netflix",              "sector": "Consumer"},
-    # Financeiro
+    {"symbol": "MELI",  "name": "MercadoLibre",         "sector": "Consumer"},
+    {"symbol": "ABEV",  "name": "Ambev",                "sector": "Consumer"},
+    {"symbol": "JBS",   "name": "JBS S.A.",             "sector": "Consumer"},
+    # Financial
     {"symbol": "JPM",   "name": "JPMorgan Chase",       "sector": "Financial"},
     {"symbol": "BRK-B", "name": "Berkshire Hathaway B", "sector": "Financial"},
     {"symbol": "V",     "name": "Visa",                 "sector": "Financial"},
-    # Saúde
+    {"symbol": "ITUB",  "name": "Itaú Unibanco",        "sector": "Financial"},
+    {"symbol": "NU",    "name": "Nubank",               "sector": "Financial"},
+    {"symbol": "AXIA",  "name": "Eletrobrás (AXIA)",    "sector": "Energy"},
+    # Healthcare
     {"symbol": "UNH",   "name": "UnitedHealth",         "sector": "Healthcare"},
     {"symbol": "JNJ",   "name": "Johnson & Johnson",    "sector": "Healthcare"},
     {"symbol": "LLY",   "name": "Eli Lilly",            "sector": "Healthcare"},
-    # Energia
+    # Energy
     {"symbol": "XOM",   "name": "Exxon Mobil",          "sector": "Energy"},
+    {"symbol": "PBR",   "name": "Petrobras",            "sector": "Energy"},
+    # Materials
+    {"symbol": "VALE",  "name": "Vale S.A.",            "sector": "Materials"},
+    {"symbol": "SUZ",   "name": "Suzano S.A.",          "sector": "Materials"},
     # Industrial
     {"symbol": "CAT",   "name": "Caterpillar",          "sector": "Industrial"},
     {"symbol": "HON",   "name": "Honeywell",            "sector": "Industrial"},
     # Telecom
     {"symbol": "T",     "name": "AT&T",                 "sector": "Telecom"},
-    # Semicondutores
-    {"symbol": "ASML",  "name": "ASML Holding",         "sector": "Technology"},
 ]
 
 SYMBOLS = [t["symbol"] for t in TICKERS]
@@ -44,6 +53,7 @@ SECTOR_COLORS = {
     "Financial":  "#f59e0b",
     "Healthcare": "#a78bfa",
     "Energy":     "#f87171",
+    "Materials":  "#2dd4bf",
     "Industrial": "#94a3b8",
     "Telecom":    "#fb923c",
 }
