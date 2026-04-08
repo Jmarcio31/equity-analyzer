@@ -14,8 +14,8 @@ _LAST_CALL = 0.0
 def _get(function, symbol, **kwargs):
     global _LAST_CALL
     elapsed = time.time() - _LAST_CALL
-    if elapsed < 1.2:
-        time.sleep(1.2 - elapsed)
+    if elapsed < 0.5:
+        time.sleep(0.5 - elapsed)
     _LAST_CALL = time.time()
 
     params = {"function": function, "symbol": symbol, "apikey": AV_KEY}
