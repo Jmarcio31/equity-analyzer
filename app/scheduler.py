@@ -33,13 +33,19 @@ def _update_prices(av_fetch, db, symbols):
 
 
 def _update_financials(av_fetch, db, calc, symbols):
-    """Atualiza dados contábeis dos tickers que precisam de update."""
+    """
+    Atualiza dados contábeis trimestrais via 3 chamadas separadas.
+    Só atualiza tickers já carregados e com >90 dias desde último update.
+    """
     updated = 0
     for symbol in symbols:
         if not db.needs_quarterly_update(symbol):
             continue
         try:
-            rows = av_fetch.fetch_quarterly_financials(symbol)
+            inc  = av_fetch.fetch_income_statement(symbol)
+            bs   = av_fetch.fetch_balance_sheet(symbol)
+            cf   = av_fetch.fetch_cash_flow(symbol)
+            rows = av_fetch.build_rows_from_statements(inc, bs, cf)
             if rows:
                 db.save_financials(symbol, rows)
                 db.log_update(symbol, "quarterly", "ok")

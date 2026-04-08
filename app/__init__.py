@@ -1,6 +1,5 @@
 from flask import Flask
 from . import database, scheduler
-from .data import fetch_current_price, fetch_quarterly_financials, fetch_price_history
 from .calc import compute_valuation
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -18,7 +17,7 @@ def create_app():
 
     # Inicia scheduler em background
     try:
-        import data as av
+        from . import data as av
         scheduler.start_scheduler(av, database, compute_valuation, SYMBOLS)
     except Exception as e:
         print(f"AVISO: Scheduler não iniciado: {e}")
