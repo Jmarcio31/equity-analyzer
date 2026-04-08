@@ -51,25 +51,40 @@ def _update_financials(av_fetch, db, calc, symbols):
     return updated
 
 
-def start_scheduler(av_fetch, db, calc, symbols, interval_hours=1):
-    """Inicia scheduler em thread separada."""
+def start_scheduler(av_fetch, db, calc, symbols, interval_hours=6):
+    """
+    Inicia scheduler em thread separada.
+    SÓ atualiza preços de tickers que JÁ têm dados financeiros no banco.
+    NÃO faz carga inicial automática — isso é feito manualmente pelo usuário.
+    Roda a cada 6 horas para não desperdiçar requisições.
+    """
 
     def _run():
-        log.info("Scheduler iniciado")
+        # Aguarda 10 minutos antes da primeira execução
+        # para não interferir com o startup do app
+        log.info("Scheduler iniciado — aguardando 10min antes da primeira execução")
+        time.sleep(600)
+
         while True:
             try:
                 now = datetime.now()
                 log.info(f"Scheduler rodando: {now.strftime('%Y-%m-%d %H:%M')}")
 
-                # Atualiza preços (verifica diariamente)
-                n_prices = _update_prices(av_fetch, db, symbols)
-                if n_prices:
-                    log.info(f"{n_prices} preços atualizados")
+                # Só atualiza preços de tickers que JÁ têm dados no banco
+                symbols_with_data = [s for s in symbols if db.has_financials(s)]
+                if symbols_with_data:
+                    n_prices = _update_prices(av_fetch, db, symbols_with_data)
+                    if n_prices:
+                        log.info(f"{n_prices} preços atualizados")
+                else:
+                    log.info("Nenhum ticker com dados no banco ainda — aguardando carga manual")
 
-                # Atualiza dados contábeis (verifica trimestralmente)
-                n_fin = _update_financials(av_fetch, db, calc, symbols)
-                if n_fin:
-                    log.info(f"{n_fin} tickers com dados contábeis atualizados")
+                # Atualiza dados contábeis SOMENTE de tickers já carregados
+                # e somente se >90 dias desde último update
+                if symbols_with_data:
+                    n_fin = _update_financials(av_fetch, db, calc, symbols_with_data)
+                    if n_fin:
+                        log.info(f"{n_fin} tickers com dados contábeis atualizados")
 
             except Exception as e:
                 log.error(f"Erro no scheduler: {e}")
