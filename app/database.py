@@ -200,3 +200,52 @@ def get_update_status():
             """)
             rows = cur.fetchall()
     return [dict(r) for r in rows]
+
+
+# ── Temp storage (para carga em múltiplos steps) ──────────────────────────────
+
+def init_temp_table():
+    """Cria tabela temporária se não existir."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS temp_data (
+                    symbol      VARCHAR(10)  NOT NULL,
+                    data_type   VARCHAR(20)  NOT NULL,
+                    data        JSONB        NOT NULL,
+                    created_at  TIMESTAMP    DEFAULT NOW(),
+                    UNIQUE(symbol, data_type)
+                );
+            """)
+        conn.commit()
+
+
+def save_temp(symbol, data_type, data):
+    import json
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO temp_data (symbol, data_type, data)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (symbol, data_type)
+                DO UPDATE SET data = EXCLUDED.data, created_at = NOW()
+            """, (symbol, data_type, json.dumps(data)))
+        conn.commit()
+
+
+def load_temp(symbol, data_type):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT data FROM temp_data
+                WHERE symbol = %s AND data_type = %s
+            """, (symbol, data_type))
+            row = cur.fetchone()
+    return row[0] if row else None
+
+
+def clear_temp(symbol):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM temp_data WHERE symbol = %s", (symbol,))
+        conn.commit()

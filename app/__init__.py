@@ -12,6 +12,7 @@ def create_app():
     # Inicializa banco de dados
     try:
         database.init_db()
+        database.init_temp_table()
     except Exception as e:
         print(f"AVISO: Banco não disponível: {e}")
 

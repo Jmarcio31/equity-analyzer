@@ -1,7 +1,3 @@
-"""
-Camada de acesso à Alpha Vantage API.
-Apenas busca dados externos — não acessa o banco diretamente.
-"""
 import os
 import time
 import requests
@@ -14,13 +10,13 @@ _LAST_CALL = 0.0
 def _get(function, symbol, **kwargs):
     global _LAST_CALL
     elapsed = time.time() - _LAST_CALL
-    if elapsed < 0.5:
-        time.sleep(0.5 - elapsed)
+    if elapsed < 1.5:
+        time.sleep(1.5 - elapsed)
     _LAST_CALL = time.time()
 
     params = {"function": function, "symbol": symbol, "apikey": AV_KEY}
     params.update(kwargs)
-    r = requests.get(AV_BASE, params=params, timeout=30)
+    r = requests.get(AV_BASE, params=params, timeout=15)
     r.raise_for_status()
     data = r.json()
     if "Information" in data or "Note" in data:
@@ -40,26 +36,47 @@ def _f(d, *keys):
 
 
 def fetch_current_price(symbol):
-    """Busca somente a cotação atual — 1 requisição."""
+    """1 requisição — só cotação."""
     data  = _get("GLOBAL_QUOTE", symbol)
     quote = data.get("Global Quote", {})
     return _f(quote, "05. price")
 
 
 def fetch_overview(symbol):
-    """Busca metadados da empresa — 1 requisição."""
+    """1 requisição — metadados da empresa."""
     return _get("OVERVIEW", symbol)
 
 
-def fetch_quarterly_financials(symbol, quarters=20):
-    """
-    Busca e calcula dados trimestrais — 3 requisições (income, balance, cashflow).
-    Retorna lista de rows prontos para salvar no banco.
-    """
-    inc_data = _get("INCOME_STATEMENT", symbol)
-    bs_data  = _get("BALANCE_SHEET",    symbol)
-    cf_data  = _get("CASH_FLOW",        symbol)
+def fetch_income_statement(symbol):
+    """1 requisição — DRE trimestral."""
+    return _get("INCOME_STATEMENT", symbol)
 
+
+def fetch_balance_sheet(symbol):
+    """1 requisição — Balanço trimestral."""
+    return _get("BALANCE_SHEET", symbol)
+
+
+def fetch_cash_flow(symbol):
+    """1 requisição — Fluxo de caixa trimestral."""
+    return _get("CASH_FLOW", symbol)
+
+
+def fetch_price_history(symbol):
+    """1 requisição — histórico mensal de preços."""
+    data   = _get("TIME_SERIES_MONTHLY_ADJUSTED", symbol)
+    series = data.get("Monthly Adjusted Time Series", {})
+    return [
+        {"date": d, "close": float(v.get("5. adjusted close", 0))}
+        for d, v in sorted(series.items())
+    ]
+
+
+def build_rows_from_statements(inc_data, bs_data, cf_data, quarters=20):
+    """
+    Monta os rows trimestrais a partir dos dados já buscados.
+    Chamado após buscar os 3 statements separadamente.
+    """
     inc_q = inc_data.get("quarterlyReports", [])
     bs_q  = bs_data.get("quarterlyReports",  [])
     cf_q  = cf_data.get("quarterlyReports",  [])
@@ -206,18 +223,7 @@ def fetch_quarterly_financials(symbol, quarters=20):
     return rows
 
 
-def fetch_price_history(symbol):
-    """Busca histórico mensal de preços — 1 requisição."""
-    data   = _get("TIME_SERIES_MONTHLY_ADJUSTED", symbol)
-    series = data.get("Monthly Adjusted Time Series", {})
-    return [
-        {"date": d, "close": float(v.get("5. adjusted close", 0))}
-        for d, v in sorted(series.items())
-    ]
-
-
 def fetch_treasury_yield():
-    """Busca yield do Treasury 10 anos — 1 requisição."""
     try:
         data = _get("TREASURY_YIELD", "", interval="monthly", maturity="10year")
         pts  = data.get("data", [])

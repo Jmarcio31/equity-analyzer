@@ -4,7 +4,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from config import TICKERS, SECTOR_COLORS
 from . import database as db
 from .calc import compute_valuation
-from .data import fetch_current_price, fetch_quarterly_financials, fetch_price_history, fetch_treasury_yield
+from .data import (fetch_current_price, fetch_overview,
+                   fetch_income_statement, fetch_balance_sheet,
+                   fetch_cash_flow, fetch_price_history,
+                   build_rows_from_statements, fetch_treasury_yield)
 
 main = Blueprint("main", __name__)
 
@@ -16,7 +19,6 @@ def index():
 
 @main.route("/api/tickers")
 def api_tickers():
-    """Retorna lista de tickers disponíveis com status de dados."""
     status_map = {}
     for s in db.get_update_status():
         symbol = s["symbol"]
@@ -38,14 +40,74 @@ def api_tickers():
     return jsonify(result)
 
 
+@main.route("/api/load/<symbol>", methods=["POST"])
+def load_symbol(symbol):
+    """
+    Carrega dados de UM ticker em 4 etapas separadas.
+    O frontend chama este endpoint 4 vezes, uma para cada step.
+    step=1: income statement
+    step=2: balance sheet
+    step=3: cash flow (monta rows e salva)
+    step=4: price history
+    """
+    symbol = symbol.upper()
+    valid  = [t["symbol"] for t in TICKERS]
+    if symbol not in valid:
+        return jsonify({"error": "Ticker não disponível"}), 400
+
+    step = request.args.get("step", "1")
+
+    try:
+        if step == "1":
+            # Busca cotação + income statement
+            price = fetch_current_price(symbol)
+            if price > 0:
+                db.save_current_price(symbol, price)
+                db.log_update(symbol, "price")
+            inc = fetch_income_statement(symbol)
+            # Salva temporariamente na sessão via banco (tabela temp)
+            db.save_temp(symbol, "inc", inc)
+            return jsonify({"ok": True, "step": 1, "price": price})
+
+        elif step == "2":
+            bs = fetch_balance_sheet(symbol)
+            db.save_temp(symbol, "bs", bs)
+            return jsonify({"ok": True, "step": 2})
+
+        elif step == "3":
+            cf = fetch_cash_flow(symbol)
+            # Recupera statements salvos e monta rows
+            inc = db.load_temp(symbol, "inc")
+            bs  = db.load_temp(symbol, "bs")
+            if not inc or not bs:
+                return jsonify({"error": "Dados incompletos — reinicie a carga"}), 400
+            rows = build_rows_from_statements(inc, bs, cf)
+            if rows:
+                db.save_financials(symbol, rows)
+                db.log_update(symbol, "quarterly")
+                db.clear_temp(symbol)
+            return jsonify({"ok": True, "step": 3, "quarters": len(rows)})
+
+        elif step == "4":
+            history = fetch_price_history(symbol)
+            if history:
+                db.save_price_history(symbol, history)
+            return jsonify({"ok": True, "step": 4, "history_points": len(history)})
+
+        else:
+            return jsonify({"error": "Step inválido"}), 400
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @main.route("/api/analyze", methods=["POST"])
 def analyze():
     body    = request.get_json(force=True)
     symbols = body.get("tickers", [])
     symbols = [s.strip().upper() for s in symbols if s.strip()][:3]
-
-    valid_symbols = [t["symbol"] for t in TICKERS]
-    symbols = [s for s in symbols if s in valid_symbols]
+    valid   = [t["symbol"] for t in TICKERS]
+    symbols = [s for s in symbols if s in valid]
 
     if not symbols:
         return jsonify({"error": "Selecione ao menos um ticker válido."}), 400
@@ -55,17 +117,11 @@ def analyze():
 
     for symbol in symbols:
         try:
-            # 1. Carrega dados do banco
             rows = db.load_financials(symbol)
-
-            # 2. Se não há dados, busca da API agora (primeira carga)
             if not rows:
-                rows = fetch_quarterly_financials(symbol)
-                if rows:
-                    db.save_financials(symbol, rows)
-                    db.log_update(symbol, "quarterly")
+                return jsonify({"error": f"{symbol} ainda não foi carregado. Use o painel de progresso primeiro."}), 400
 
-            # 3. Preço: do banco se recente, senão busca da API
+            # Preço — do banco se recente, senão busca
             if db.needs_price_update(symbol):
                 price = fetch_current_price(symbol)
                 if price > 0:
@@ -74,40 +130,29 @@ def analyze():
             else:
                 price = db.load_current_price(symbol)
 
-            # 4. Histórico de preços
-            start_date = rows[0]["date"] if rows else None
+            # Histórico de preços
+            start_date    = rows[0]["date"] if rows else None
             price_history = db.load_price_history(symbol, start_date)
-            if not price_history:
-                price_history = fetch_price_history(symbol)
-                if price_history:
-                    db.save_price_history(symbol, price_history)
 
-            # 5. Calcula valuation
             val = compute_valuation(rows, price, treasury)
-
-            # 6. Metadados do ticker
             ticker_info = next((t for t in TICKERS if t["symbol"] == symbol), {})
 
-            # 7. Limpa campos internos das rows
-            clean_rows = []
-            for r in rows:
-                clean = {k: v for k, v in r.items() if not k.startswith("_")}
-                clean_rows.append(clean)
+            clean_rows = [{k: v for k, v in r.items() if not k.startswith("_")} for r in rows]
 
             results.append({
-                "ticker":       symbol,
-                "name":         ticker_info.get("name", symbol),
-                "sector":       ticker_info.get("sector", ""),
-                "industry":     "",
-                "price":        price,
-                "currency":     "USD",
-                "exchange":     "",
-                "description":  "",
-                "rows":         clean_rows,
-                "valuation":    val,
-                "quarters":     [r["date"] for r in clean_rows],
+                "ticker":        symbol,
+                "name":          ticker_info.get("name", symbol),
+                "sector":        ticker_info.get("sector", ""),
+                "industry":      "",
+                "price":         price,
+                "currency":      "USD",
+                "exchange":      "",
+                "description":   "",
+                "rows":          clean_rows,
+                "valuation":     val,
+                "quarters":      [r["date"] for r in clean_rows],
                 "price_history": price_history,
-                "color":        SECTOR_COLORS.get(ticker_info.get("sector",""), "#4f7cff"),
+                "color":         SECTOR_COLORS.get(ticker_info.get("sector",""), "#4f7cff"),
             })
 
         except Exception as e:
@@ -116,24 +161,8 @@ def analyze():
     return jsonify({"results": results, "errors": errors})
 
 
-@main.route("/api/status")
-def api_status():
-    """Painel de status de atualizações."""
-    status = db.get_update_status()
-    # Conta tickers com dados carregados
-    loaded = sum(1 for s in db.get_update_status() if s.get("update_type") == "quarterly" and s.get("status") == "ok")
-    total  = len(TICKERS)
-    return jsonify({
-        "updates": status,
-        "loaded_tickers": loaded,
-        "total_tickers": total,
-        "remaining": total - loaded
-    })
-
-
 @main.route("/api/quota-check")
 def quota_check():
-    """Verifica quantos tickers já têm dados no banco."""
     result = []
     for t in TICKERS:
         result.append({
@@ -143,10 +172,22 @@ def quota_check():
         })
     loaded = sum(1 for r in result if r["has_data"])
     return jsonify({
-        "tickers": result,
-        "loaded": loaded,
-        "pending": len(result) - loaded,
+        "tickers":    result,
+        "loaded":     loaded,
+        "pending":    len(result) - loaded,
         "req_per_ticker": 4,
-        "daily_limit": 25,
-        "max_per_day": 6,  # 25 req / 4 req por ticker = 6 tickers/dia (com margem)
+        "daily_limit":    25,
+        "max_per_day":    6,
+    })
+
+
+@main.route("/api/status")
+def api_status():
+    status = db.get_update_status()
+    loaded = sum(1 for s in status if s.get("update_type") == "quarterly" and s.get("status") == "ok")
+    return jsonify({
+        "updates":        status,
+        "loaded_tickers": loaded,
+        "total_tickers":  len(TICKERS),
+        "remaining":      len(TICKERS) - loaded,
     })

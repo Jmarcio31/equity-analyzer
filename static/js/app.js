@@ -182,22 +182,31 @@ async function loadSingle(symbol) {
   const chip = document.querySelector(`.progress-chip[onclick="loadSingle('${symbol}')"]`);
   if (chip) { chip.textContent = '⏳ ' + symbol; chip.style.opacity = '0.6'; chip.onclick = null; }
 
+  const steps = [
+    {step: '1', label: '1/4 cotação + DRE'},
+    {step: '2', label: '2/4 balanço'},
+    {step: '3', label: '3/4 fluxo de caixa'},
+    {step: '4', label: '4/4 histórico de preços'},
+  ];
+
   try {
-    const r = await fetch('/api/analyze', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({tickers: [symbol]})
-    });
-    const d = await r.json();
-    if (d.errors?.length) {
-      if (chip) { chip.textContent = '❌ ' + symbol; chip.style.background = '#7f1d1d'; }
-      alert(`${symbol}: ${d.errors[0].error}`);
-    } else {
-      if (chip) { chip.textContent = '✅ ' + symbol; chip.style.background = '#14532d'; chip.style.opacity = '1'; }
-      setTimeout(() => checkLoadProgress(), 500);
+    for (const s of steps) {
+      if (chip) chip.textContent = `⏳ ${symbol} ${s.label}`;
+      const r = await fetch(`/api/load/${symbol}?step=${s.step}`, {method: 'POST'});
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      // Aguarda 2s entre steps para respeitar rate limit da AV
+      if (s.step !== '4') await new Promise(res => setTimeout(res, 2000));
     }
+    if (chip) {
+      chip.textContent = '✅ ' + symbol;
+      chip.style.background = '#14532d';
+      chip.style.opacity = '1';
+    }
+    setTimeout(() => checkLoadProgress(), 500);
   } catch(e) {
-    if (chip) { chip.textContent = '❌ ' + symbol; chip.style.background = '#7f1d1d'; }
+    if (chip) { chip.textContent = '❌ ' + symbol; chip.style.background = '#7f1d1d'; chip.style.opacity = '1'; }
+    alert(`Erro ao carregar ${symbol}: ${e.message}`);
   }
 }
 
