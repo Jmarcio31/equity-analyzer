@@ -262,6 +262,57 @@ def save_hist(c,s,h):
             cur.execute("INSERT INTO price_history(symbol,price_date,close) VALUES(%s,%s,%s) "
                        "ON CONFLICT(symbol,price_date) DO NOTHING",(s,x["date"],x["close"]))
     c.commit()
+def update_prices(c, batch=None):
+    """
+    Atualiza cotações de todos os tickers em lotes.
+    Usa GLOBAL_QUOTE — 1 req por ticker.
+
+    batch=None  → atualiza todos (até 25 por dia)
+    batch=1     → tickers 1-20 (seg/qua/sex)
+    batch=2     → tickers 21-28 (ter/qui)
+
+    Com 28 tickers e limite de 25 req/dia:
+    - Batch 1 (20 tickers): 20 req — seg, qua, sex
+    - Batch 2 (8 tickers):  8 req  — ter, qui
+    - Total semanal: todos os 28 tickers atualizados 2-3x
+    """
+    from datetime import date
+    print("="*50)
+    print("  ATUALIZAÇÃO DE COTAÇÕES")
+    print("="*50)
+
+    if batch == 1:
+        targets = TICKERS[:20]
+        print(f"  Lote 1/2: tickers 1-20")
+    elif batch == 2:
+        targets = TICKERS[20:]
+        print(f"  Lote 2/2: tickers 21-{len(TICKERS)}")
+    else:
+        targets = TICKERS[:25]
+        print(f"  Lote único: primeiros 25 tickers")
+
+    ok = fail = 0
+    for t in targets:
+        s = t["symbol"]
+        if not loaded(c, s):
+            print(f"  {s}: sem dados — pulando")
+            continue
+        try:
+            q = get("GLOBAL_QUOTE", s)
+            p = fv(q.get("Global Quote", {}).get("05. price"))
+            if p > 0:
+                save_px(c, s, p)
+                log(c, s, "price")
+                print(f"  {s}: ${p:.2f} ✓")
+                ok += 1
+            else:
+                print(f"  {s}: preço indisponível")
+        except Exception as e:
+            print(f"  {s}: ❌ {e}")
+            fail += 1
+
+    print(f"\n  Cotações: {ok} ok | {fail} erros")
+
 def log(c,s,t,st="ok",msg=None):
     with c.cursor() as cur:
         cur.execute("INSERT INTO update_log(symbol,update_type,status,message) VALUES(%s,%s,%s,%s) "
@@ -305,10 +356,12 @@ def load_one(c,sym,name,reload=False):
 def main():
     reload_mode  = "--reload" in sys.argv
     update_mode  = "--update" in sys.argv
+    prices_mode  = "--prices" in sys.argv
     single = next((a.upper() for a in sys.argv[1:] if not a.startswith("--")),None)
     print("="*50)
     print("  CARGA / ATUALIZAÇÃO AV (25 req/dia)")
     print("="*50)
+    if prices_mode:  print("  Modo: PRICES (somente cotações)")
     if update_mode:  print("  Modo: UPDATE (verifica trimestres novos)")
     if reload_mode:  print("  Modo: RELOAD (recarrega tudo)")
     c=conn(); init(c)
