@@ -283,6 +283,118 @@ function switchTab(ticker, tab, btnEl) {
 }
 
 // ─── Valuation Panel ──────────────────────────────────────────────────────────
+// ─── Definições de tooltip por métrica ───────────────────────────────────────
+const TOOLTIPS = {
+  'Cotação': 'Última cotação disponível no banco de dados. Atualizada diariamente pelo script de carga.',
+  'EV / EBIT': 'Enterprise Value dividido pelo EBIT (TTM). Mede quanto o mercado paga pelo lucro operacional. <15x = barato; >30x = caro (regra geral, varia por setor).',
+  'Market Cap': 'Preço × Ações em circulação do último trimestre disponível.',
+  'Enterprise Value': 'Market Cap + Dívida Total − Caixa Completo (ST + LT investments). Representa o valor total da empresa para um comprador.',
+  'ROIC (último trim.)': 'Return on Invested Capital.
+
+Fórmula: NOPAT ÷ Capital Investido ex-Goodwill
+
+NOPAT = EBIT × (1 − Tax Rate efetivo, cap 30%)
+Capital Investido ex-GW = NWC + PP&E + Intangíveis
+NWC = (Ativo Circ. − Caixa Completo) − (Passivo Circ. − Dívida CP)
+
+Exclui goodwill do denominador para refletir o retorno sobre ativos tangíveis, sem distorção de aquisições a prêmio.
+
+Horizonte: último trimestre (anualizado via TTM).',
+  'WACC (último trim.)': 'Weighted Average Cost of Capital.
+
+Fórmula: Ke × We + Kd × (1−t) × Wd
+
+Ke (custo do equity) = 10% fixo
+Kd (custo da dívida) = Despesa Financeira ÷ Dívida Total
+Ponderação: estrutura de capital do último trimestre
+
+O Ke de 10% é uma proxy do custo de equity para mercado americano. Empresas brasileiras têm custo de capital maior — limitação do modelo atual.',
+  'Spread ROIC−WACC': 'ROIC − WACC. Spread positivo = empresa criando valor econômico; negativo = destruindo valor mesmo com lucro contábil positivo.
+
+É o principal indicador de qualidade do negócio neste framework.',
+  'Treasury Yield (10Y)': 'Taxa do Treasury americano de 10 anos, usada como:
+1. Taxa livre de risco na Fórmula de Graham (denominador Y%)
+2. Referência para o WACC
+
+Fonte: Alpha Vantage, atualizada periodicamente.',
+  'Cash Excess / Ação': 'Caixa excedente por ação.
+
+Fórmula: max(Caixa Completo − Dívida Total, 0) ÷ Ações
+
+Caixa Completo = Cash & ST Investments + LT Investments
+
+Representa o caixa líquido disponível acima da dívida.',
+  'FCF Yield': 'FCF−SBC ÷ Market Cap.
+
+FCF−SBC = Fluxo de Caixa Operacional − Capex − Stock-Based Compensation
+
+É o "free cash flow to equity" ajustado pelo SBC, que é uma despesa real mas não-caixa.',
+  'EBIT Yield (TIR)': 'EBIT (TTM) ÷ Enterprise Value. Equivale ao inverso do EV/EBIT.
+
+Interpretação: se você comprasse a empresa inteira, qual seria o rendimento anual sobre o preço pago.',
+  'Div Yield': 'Dividendos pagos por ação (TTM) ÷ Preço atual.',
+  'EBIT': 'Earnings Before Interest and Taxes — lucro operacional.
+
+Fonte: operatingIncome da API (TTM = soma dos últimos 4 trimestres).
+
+Usado na Fórmula de Graham como proxy do poder de lucro operacional.',
+  'FCF − SBC': 'Free Cash Flow ajustado por Stock-Based Compensation.
+
+Fórmula: OCF − |Capex| − SBC
+
+É o FCFE implícito (equity free cash flow), pois parte do OCF já reflete pagamentos de dívida.
+
+Não é FCFF (firm). O SBC é deduzido porque dilui o acionista.',
+  'Economic Profit': 'Lucro Econômico (equivalente ao EVA®).
+
+Fórmula: NOPAT − (WACC × Capital Investido ex-Goodwill)
+
+Diferente do EVA clássico: usamos capital ex-goodwill para evitar distorção de aquisições.
+
+EP > 0 = empresa gerando retorno acima do custo de capital.',
+  'Dividendos': 'Dividendos pagos por ação nos últimos 12 meses (TTM).
+
+Fonte: dividendsPaid do Cash Flow Statement.
+
+Como o CAGR de dividendos exige histórico longo, a Margem de Segurança por dividendos tem menor peso analítico para empresas de crescimento.',
+  'Margem de Segurança': 'Fórmula de Graham (revisão 1974):
+
+V = EPS × (8,5 + 2 × g%) × (4,4 ÷ Y%)
+
+Onde:
+• EPS = métrica por ação (EBIT, FCF, EP ou Div)
+• 8,5 = múltiplo base para crescimento zero
+• g% = CAGR histórico de 5 anos (ou 3 se indisponível)
+• 4,4 = yield do AAA bond na época de Graham (~1962)
+• Y% = Treasury 10Y atual
+
+MS = (V − Preço) ÷ V
+
+MS > 0 = ação abaixo do valor intrínseco calculado',
+};
+
+function tooltip(key) {
+  const txt = TOOLTIPS[key];
+  if (!txt) return '';
+  const escaped = txt.replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
+  return `<span class="info-icon" data-tip="${escaped}" onclick="showTooltipModal(this)">ⓘ</span>`;
+}
+
+function showTooltipModal(el) {
+  document.getElementById('tooltip-modal')?.remove();
+  const txt = el.getAttribute('data-tip').replace(/&#10;/g, '\n');
+  const modal = document.createElement('div');
+  modal.id = 'tooltip-modal';
+  modal.className = 'tooltip-modal';
+  modal.innerHTML = `
+    <div class="tooltip-modal-inner">
+      <button class="tooltip-modal-close" onclick="document.getElementById('tooltip-modal').remove()">✕</button>
+      <div class="tooltip-modal-body">${txt.replace(/\n/g,'<br>')}</div>
+    </div>`;
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
 function buildValuationPanel(r, v) {
   const kpis = [
     {label:'Cotação',           value: fmt.$(r.price)},
@@ -299,15 +411,15 @@ function buildValuationPanel(r, v) {
     {label:'Div Yield',          value: fmt.pct(v.div_yield)},
   ];
   const kpiHtml = kpis.map(k => `<div class="val-card">
-    <div class="val-label">${k.label}</div>
+    <div class="val-label">${k.label}${tooltip(k.label)}</div>
     <div class="val-value ${k.cls||''}">${k.value}</div>
   </div>`).join('');
 
   const msRows = [
-    {metric:'EBIT',           eps: fmt.$(v.ebit_ps), cagr: fmt.pct(v.ebit_cagr), graham: fmt.$(v.graham_ebit), ms: v.ms_ebit},
-    {metric:'FCF − SBC',      eps: fmt.$(v.fcf_ps),  cagr: fmt.pct(v.fcf_cagr),  graham: fmt.$(v.graham_fcf),  ms: v.ms_fcf},
-    {metric:'Economic Profit',eps: fmt.$(v.ep_ps),   cagr: fmt.pct(v.ep_cagr),   graham: fmt.$(v.graham_ep),   ms: v.ms_ep},
-    {metric:'Dividendos',     eps: fmt.$(v.div_ps),  cagr: fmt.pct(v.div_cagr),  graham: fmt.$(v.graham_div),  ms: v.ms_div},
+    {metric:'EBIT',           tip:'EBIT',            eps: fmt.$(v.ebit_ps), cagr: fmt.pct(v.ebit_cagr), graham: fmt.$(v.graham_ebit), ms: v.ms_ebit},
+    {metric:'FCF − SBC',      tip:'FCF − SBC',        eps: fmt.$(v.fcf_ps),  cagr: fmt.pct(v.fcf_cagr),  graham: fmt.$(v.graham_fcf),  ms: v.ms_fcf},
+    {metric:'Economic Profit',tip:'Economic Profit',  eps: fmt.$(v.ep_ps),   cagr: fmt.pct(v.ep_cagr),   graham: fmt.$(v.graham_ep),   ms: v.ms_ep},
+    {metric:'Dividendos',     tip:'Dividendos',       eps: fmt.$(v.div_ps),  cagr: fmt.pct(v.div_cagr),  graham: fmt.$(v.graham_div),  ms: v.ms_div},
   ].map(row => {
     const ms = row.ms;
     const barPct = ms == null ? 0 : Math.min(Math.abs(ms) * 100, 100);
@@ -316,7 +428,7 @@ function buildValuationPanel(r, v) {
       ? `right:50%;width:${barPct/2}%`
       : `left:50%;width:${barPct/2}%`;
     return `<tr>
-      <td><b>${row.metric}</b></td>
+      <td><b>${row.metric}</b>${tooltip(row.tip||row.metric)}</td>
       <td>${row.eps}</td><td>${row.cagr}</td><td>${row.graham}</td>
       <td class="${colorClass(ms)}" style="font-weight:600">${ms==null?'—':fmt.pct1(ms)}</td>
       <td><div class="ms-bar-bg" style="position:relative">
@@ -331,7 +443,7 @@ function buildValuationPanel(r, v) {
     <h3 style="margin-bottom:8px;font-size:13px;color:var(--text2)">Margem de Segurança — Fórmula de Graham</h3>
     <p style="font-size:11px;color:var(--text3);margin-bottom:12px">V = EPS × (8,5 + 2 × CAGR%) × 4,4 / Y &nbsp;·&nbsp; MS = (V − Preço) / V</p>
     <div class="ms-table-wrap"><table class="ms-table">
-      <thead><tr><th>Métrica</th><th>EPS/Ação TTM</th><th>CAGR</th><th>Graham (V)</th><th>Margem de Segurança</th><th></th></tr></thead>
+      <thead><tr><th>Métrica</th><th>EPS/Ação TTM${tooltip('EBIT')}</th><th>CAGR</th><th>Graham (V)${tooltip('Margem de Segurança')}</th><th>Margem de Segurança</th><th></th></tr></thead>
       <tbody>${msRows}</tbody>
       <tfoot><tr style="font-weight:700;border-top:2px solid var(--border)">
         <td colspan="4" style="text-align:right;padding-right:14px">Média (FCF + EP + Div)</td>

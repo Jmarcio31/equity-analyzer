@@ -452,3 +452,57 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
 .ticker-card--pending .ticker-card-symbol {
   color: var(--text3) !important;
 }
+
+/* ── Tooltips / Modal de metodologia ── */
+.info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  font-size: 11px;
+  color: var(--text3);
+  cursor: pointer;
+  margin-left: 4px;
+  border-radius: 50%;
+  vertical-align: middle;
+  transition: color 0.15s;
+  user-select: none;
+}
+.info-icon:hover { color: var(--accent); }
+
+.tooltip-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.tooltip-modal-inner {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px 28px;
+  max-width: 480px;
+  width: 100%;
+  position: relative;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+}
+.tooltip-modal-close {
+  position: absolute;
+  top: 12px; right: 14px;
+  background: none; border: none;
+  color: var(--text3); font-size: 16px;
+  cursor: pointer; line-height: 1;
+}
+.tooltip-modal-close:hover { color: var(--text); }
+.tooltip-modal-body {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text2);
+  white-space: pre-line;
+}
+.tooltip-modal-body strong { color: var(--text); }
