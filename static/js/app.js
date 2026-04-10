@@ -16,39 +16,13 @@ function buildValuationPanelFinancial(r, v) {
   };
 
   const FIN_TOOLTIPS = {
-    'ROE': 'Return on Equity — Lucro Líquido TTM ÷ Patrimônio Líquido.
-
-Principal métrica de rentabilidade para bancos, substitui o ROIC.
-
-ROE > custo do equity (≈10-12%) = criação de valor para o acionista.',
-    'P/TBV': 'Preço ÷ Tangible Book Value por ação.
-
-TBV = Patrimônio Líquido − Goodwill
-
-Múltiplo fundamental para bancos. P/TBV < 1 pode indicar desconto; > 2 pode indicar prêmio elevado.
-
-Bancos que destroem valor tendem a negociar abaixo de 1x TBV.',
-    'P/E': 'Preço ÷ Lucro Líquido por ação (TTM).
-
-Para financeiras, é mais útil que EV/EBIT porque a estrutura de capital é parte do negócio.',
-    'NIM (proxy)': 'Net Interest Margin — Receita Total ÷ Total de Ativos.
-
-Proxy aproximado: a API não separa receita de juros líquida com precisão suficiente.
-
-NIM real = (Juros Recebidos − Juros Pagos) ÷ Ativos Rentáveis.',
-    'Eficiência': 'Despesas Operacionais ÷ Receita Total.
-
-Quanto menor, mais eficiente. Bancos bem geridos ficam abaixo de 50%.
-
-Bancos brasileiros tipicamente ficam entre 40-55%.',
-    'Payout': 'Dividendos Pagos ÷ Lucro Líquido TTM.
-
-Bancos maduros (JPM, ITUB) tendem a ter payouts de 30-50%.
-
-Bancos de crescimento (NU) tendem a reter mais capital.',
-    'TBV / Ação': 'Tangible Book Value por ação = (Patrimônio Líquido − Goodwill) ÷ Ações.
-
-Representa o valor contábil tangível por ação, base para o P/TBV.',
+    'ROE': 'Return on Equity — Lucro Líquido TTM ÷ Patrimônio Líquido.\n\nPrincipal métrica de rentabilidade para bancos, substitui o ROIC.\n\nROE > custo do equity (≈10-12%) = criação de valor para o acionista.',
+    'P/TBV': 'Preço ÷ Tangible Book Value por ação.\n\nTBV = Patrimônio Líquido − Goodwill\n\nMúltiplo fundamental para bancos. P/TBV < 1 pode indicar desconto; > 2 pode indicar prêmio elevado.\n\nBancos que destroem valor tendem a negociar abaixo de 1x TBV.',
+    'P/E': 'Preço ÷ Lucro Líquido por ação (TTM).\n\nPara financeiras, é mais útil que EV/EBIT porque a estrutura de capital é parte do negócio.',
+    'NIM (proxy)': 'Net Interest Margin — Receita Total ÷ Total de Ativos.\n\nProxy aproximado: a API não separa receita de juros líquida com precisão suficiente.\n\nNIM real = (Juros Recebidos − Juros Pagos) ÷ Ativos Rentáveis.',
+    'Eficiência': 'Despesas Operacionais ÷ Receita Total.\n\nQuanto menor, mais eficiente. Bancos bem geridos ficam abaixo de 50%.\n\nBancos brasileiros tipicamente ficam entre 40-55%.',
+    'Payout': 'Dividendos Pagos ÷ Lucro Líquido TTM.\n\nBancos maduros (JPM, ITUB) tendem a ter payouts de 30-50%.\n\nBancos de crescimento (NU) tendem a reter mais capital.',
+    'TBV / Ação': 'Tangible Book Value por ação = (Patrimônio Líquido − Goodwill) ÷ Ações.\n\nRepresenta o valor contábil tangível por ação, base para o P/TBV.',
     'Total de Ativos': 'Total de ativos do último trimestre. Para bancos, o crescimento de ativos é proxy do crescimento da carteira de crédito.',
   };
 
@@ -126,92 +100,23 @@ Representa o valor contábil tangível por ação, base para o P/TBV.',
 
 
 const TOOLTIPS = {
-  'Cotação': 'Última cotação registrada no banco de dados.\nData indicada abaixo do valor.\n\nAtualização automática: dias úteis via GitHub Actions.\nTer/Qui → tickers 21-28 | Qua/Sex → tickers 1-20.',
+  'Cotação': 'Última cotação registrada no banco de dados.\nData indicada abaixo do valor.\n\nAtualização automática: dias úteis via GitHub Actions.',
   'EV / EBIT': 'Enterprise Value dividido pelo EBIT (TTM). Mede quanto o mercado paga pelo lucro operacional. <15x = barato; >30x = caro (regra geral, varia por setor).',
   'Market Cap': 'Preço × Ações em circulação do último trimestre disponível.',
   'Enterprise Value': 'Market Cap + Dívida Total − Caixa Completo (ST + LT investments). Representa o valor total da empresa para um comprador.',
-  'ROIC (último trim.)': 'Return on Invested Capital.
-
-Fórmula: NOPAT ÷ Capital Investido ex-Goodwill
-
-NOPAT = EBIT × (1 − Tax Rate efetivo, cap 30%)
-Capital Investido ex-GW = NWC + PP&E + Intangíveis
-NWC = (Ativo Circ. − Caixa Completo) − (Passivo Circ. − Dívida CP)
-
-Exclui goodwill do denominador para refletir o retorno sobre ativos tangíveis, sem distorção de aquisições a prêmio.
-
-Horizonte: último trimestre (anualizado via TTM).',
-  'WACC (último trim.)': 'Weighted Average Cost of Capital.
-
-Fórmula: Ke × We + Kd × (1−t) × Wd
-
-Ke (custo do equity) = 10% fixo
-Kd (custo da dívida) = Despesa Financeira ÷ Dívida Total
-Ponderação: estrutura de capital do último trimestre
-
-O Ke de 10% é uma proxy do custo de equity para mercado americano. Empresas brasileiras têm custo de capital maior — limitação do modelo atual.',
-  'Spread ROIC−WACC': 'ROIC − WACC. Spread positivo = empresa criando valor econômico; negativo = destruindo valor mesmo com lucro contábil positivo.
-
-É o principal indicador de qualidade do negócio neste framework.',
-  'Treasury Yield (10Y)': 'Taxa do Treasury americano de 10 anos, usada como:
-1. Taxa livre de risco na Fórmula de Graham (denominador Y%)
-2. Referência para o WACC
-
-Fonte: Alpha Vantage, atualizada periodicamente.',
-  'Cash Excess / Ação': 'Caixa excedente por ação.
-
-Fórmula: max(Caixa Completo − Dívida Total, 0) ÷ Ações
-
-Caixa Completo = Cash & ST Investments + LT Investments
-
-Representa o caixa líquido disponível acima da dívida.',
-  'FCF Yield': 'FCF−SBC ÷ Market Cap.
-
-FCF−SBC = Fluxo de Caixa Operacional − Capex − Stock-Based Compensation
-
-É o "free cash flow to equity" ajustado pelo SBC, que é uma despesa real mas não-caixa.',
-  'EBIT Yield (TIR)': 'EBIT (TTM) ÷ Enterprise Value. Equivale ao inverso do EV/EBIT.
-
-Interpretação: se você comprasse a empresa inteira, qual seria o rendimento anual sobre o preço pago.',
+  'ROIC (último trim.)': 'Return on Invested Capital.\n\nFórmula: NOPAT ÷ Capital Investido ex-Goodwill\n\nNOPAT = EBIT × (1 − Tax Rate efetivo, cap 30%)\nCapital Investido ex-GW = NWC + PP&E + Intangíveis\n\nExclui goodwill do denominador para refletir o retorno sobre ativos tangíveis.\n\nHorizonte: último trimestre (anualizado via TTM).',
+  'WACC (último trim.)': 'Weighted Average Cost of Capital.\n\nFórmula: Ke × We + Kd × (1−t) × Wd\n\nKe (custo do equity) = 10% fixo\nKd (custo da dívida) = Despesa Financeira ÷ Dívida Total\nPonderação: estrutura de capital do último trimestre.',
+  'Spread ROIC−WACC': 'ROIC − WACC. Spread positivo = empresa criando valor econômico; negativo = destruindo valor mesmo com lucro contábil positivo.\n\nÉ o principal indicador de qualidade do negócio neste framework.',
+  'Treasury Yield (10Y)': 'Taxa do Treasury americano de 10 anos.\n\n1. Taxa livre de risco na Fórmula de Graham (denominador Y%)\n2. Referência para o WACC\n\nFonte: Alpha Vantage, atualizada periodicamente.',
+  'Cash Excess / Ação': 'Caixa excedente por ação.\n\nFórmula: max(Caixa Completo − Dívida Total, 0) ÷ Ações\nCaixa Completo = Cash & ST Investments + LT Investments.',
+  'FCF Yield': 'FCF−SBC ÷ Market Cap.\n\nFCF−SBC = Fluxo de Caixa Operacional − Capex − Stock-Based Compensation.\n\nÉ o free cash flow to equity ajustado pelo SBC.',
+  'EBIT Yield (TIR)': 'EBIT (TTM) ÷ Enterprise Value. Equivale ao inverso do EV/EBIT.\n\nSe você comprasse a empresa inteira, qual seria o rendimento anual sobre o preço pago.',
   'Div Yield': 'Dividendos pagos por ação (TTM) ÷ Preço atual.',
-  'EBIT': 'Earnings Before Interest and Taxes — lucro operacional.
-
-Fonte: operatingIncome da API (TTM = soma dos últimos 4 trimestres).
-
-Usado na Fórmula de Graham como proxy do poder de lucro operacional.',
-  'FCF − SBC': 'Free Cash Flow ajustado por Stock-Based Compensation.
-
-Fórmula: OCF − |Capex| − SBC
-
-É o FCFE implícito (equity free cash flow), pois parte do OCF já reflete pagamentos de dívida.
-
-Não é FCFF (firm). O SBC é deduzido porque dilui o acionista.',
-  'Economic Profit': 'Lucro Econômico (equivalente ao EVA®).
-
-Fórmula: NOPAT − (WACC × Capital Investido ex-Goodwill)
-
-Diferente do EVA clássico: usamos capital ex-goodwill para evitar distorção de aquisições.
-
-EP > 0 = empresa gerando retorno acima do custo de capital.',
-  'Dividendos': 'Dividendos pagos por ação nos últimos 12 meses (TTM).
-
-Fonte: dividendsPaid do Cash Flow Statement.
-
-Como o CAGR de dividendos exige histórico longo, a Margem de Segurança por dividendos tem menor peso analítico para empresas de crescimento.',
-  'Margem de Segurança': 'Fórmula de Graham (revisão 1974):
-
-V = EPS × (8,5 + 2 × g%) × (4,4 ÷ Y%)
-
-Onde:
-• EPS = métrica por ação (EBIT, FCF, EP ou Div)
-• 8,5 = múltiplo base para crescimento zero
-• g% = CAGR histórico de 5 anos (ou 3 se indisponível)
-• 4,4 = yield do AAA bond na época de Graham (~1962)
-• Y% = Treasury 10Y atual
-
-MS = (V − Preço) ÷ V
-
-MS > 0 = ação abaixo do valor intrínseco calculado',
+  'EBIT': 'Earnings Before Interest and Taxes — lucro operacional.\n\nFonte: operatingIncome da API (TTM = soma dos últimos 4 trimestres).\n\nUsado na Fórmula de Graham como proxy do poder de lucro operacional.',
+  'FCF − SBC': 'Free Cash Flow ajustado por Stock-Based Compensation.\n\nFórmula: OCF − |Capex| − SBC\n\nÉ o FCFE implícito. O SBC é deduzido porque dilui o acionista.\nNão é FCFF.',
+  'Economic Profit': 'Lucro Econômico (equivalente ao EVA®).\n\nFórmula: NOPAT − (WACC × Capital Investido ex-Goodwill)\n\nEP > 0 = empresa gerando retorno acima do custo de capital.',
+  'Dividendos': 'Dividendos pagos por ação nos últimos 12 meses (TTM).\n\nFonte: dividendsPaid do Cash Flow Statement.',
+  'Margem de Segurança': 'Fórmula de Graham (revisão 1974):\n\nV = EPS × (8,5 + 2 × g%) × (4,4 ÷ Y%)\n\nEPS = métrica por ação (EBIT, FCF, EP ou Div)\n8,5 = múltiplo base para crescimento zero\ng% = CAGR histórico de 5 anos (ou 3 se indisponível)\n4,4 = yield do AAA bond na época de Graham\nY% = Treasury 10Y atual\n\nMS = (V − Preço) ÷ V',
 };
 
 function tooltip(key) {
