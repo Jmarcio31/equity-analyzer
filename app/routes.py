@@ -3,7 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from config import TICKERS, SECTOR_COLORS
 from . import database as db
-from .calc import compute_valuation
+from .calc import compute_valuation, compute_valuation_financial, FINANCIAL_TICKERS
 from .data import (fetch_current_price, fetch_overview,
                    fetch_income_statement, fetch_balance_sheet,
                    fetch_cash_flow, fetch_price_history,
@@ -134,7 +134,8 @@ def analyze():
             start_date    = rows[0]["date"] if rows else None
             price_history = db.load_price_history(symbol, start_date)
 
-            val = compute_valuation(rows, price, treasury)
+            is_fin = symbol in FINANCIAL_TICKERS
+            val = compute_valuation_financial(rows, price, treasury) if is_fin else compute_valuation(rows, price, treasury)
             ticker_info = next((t for t in TICKERS if t["symbol"] == symbol), {})
 
             clean_rows = [{k: v for k, v in r.items() if not k.startswith("_")} for r in rows]

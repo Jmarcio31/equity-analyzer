@@ -1,289 +1,122 @@
-// ─── State ────────────────────────────────────────────────────────────────────
-let allResults = [];
-let selectedTickers = []; // [{symbol, name, color}]
-const chartInstances = {};
+// ─── Definições de tooltip por métrica ───────────────────────────────────────// ─── Painel de valuation para financeiras ────────────────────────────────────
+function buildValuationPanelFinancial(r, v) {
+  const fmt2 = {
+    pct:  x => x == null ? '—' : (x*100).toFixed(1)+'%',
+    x:    x => x == null ? '—' : x.toFixed(1)+'x',
+    $:    x => x == null ? '—' : '$'+x.toFixed(2),
+    bn:   x => x == null ? '—' : (Math.abs(x)>=1e12 ? (x/1e12).toFixed(1)+'T' : Math.abs(x)>=1e9 ? (x/1e9).toFixed(1)+'B' : (x/1e6).toFixed(0)+'M'),
+    pct1: x => x == null ? '—' : (x>=0?'+':'')+(x*100).toFixed(1)+'%',
+  };
 
-// ─── Ticker Card Selection ────────────────────────────────────────────────────
-function toggleTicker(symbol, name, color) {
-  const idx = selectedTickers.findIndex(t => t.symbol === symbol);
-  const card = document.getElementById(`card-${symbol}`);
+  const FIN_TOOLTIPS = {
+    'ROE': 'Return on Equity — Lucro Líquido TTM ÷ Patrimônio Líquido.
 
-  if (idx >= 0) {
-    // Deseleciona
-    selectedTickers.splice(idx, 1);
-    card.classList.remove('selected');
-    card.style.borderColor = '';
-  } else {
-    if (selectedTickers.length >= 3) {
-      // Remove o mais antigo
-      const removed = selectedTickers.shift();
-      const oldCard = document.getElementById(`card-${removed.symbol}`);
-      if (oldCard) { oldCard.classList.remove('selected'); oldCard.style.borderColor = ''; }
-    }
-    selectedTickers.push({symbol, name, color});
-    card.classList.add('selected');
-    card.style.borderColor = color;
-    card.querySelector('.ticker-card-check').style.color = color;
+Principal métrica de rentabilidade para bancos, substitui o ROIC.
+
+ROE > custo do equity (≈10-12%) = criação de valor para o acionista.',
+    'P/TBV': 'Preço ÷ Tangible Book Value por ação.
+
+TBV = Patrimônio Líquido − Goodwill
+
+Múltiplo fundamental para bancos. P/TBV < 1 pode indicar desconto; > 2 pode indicar prêmio elevado.
+
+Bancos que destroem valor tendem a negociar abaixo de 1x TBV.',
+    'P/E': 'Preço ÷ Lucro Líquido por ação (TTM).
+
+Para financeiras, é mais útil que EV/EBIT porque a estrutura de capital é parte do negócio.',
+    'NIM (proxy)': 'Net Interest Margin — Receita Total ÷ Total de Ativos.
+
+Proxy aproximado: a API não separa receita de juros líquida com precisão suficiente.
+
+NIM real = (Juros Recebidos − Juros Pagos) ÷ Ativos Rentáveis.',
+    'Eficiência': 'Despesas Operacionais ÷ Receita Total.
+
+Quanto menor, mais eficiente. Bancos bem geridos ficam abaixo de 50%.
+
+Bancos brasileiros tipicamente ficam entre 40-55%.',
+    'Payout': 'Dividendos Pagos ÷ Lucro Líquido TTM.
+
+Bancos maduros (JPM, ITUB) tendem a ter payouts de 30-50%.
+
+Bancos de crescimento (NU) tendem a reter mais capital.',
+    'TBV / Ação': 'Tangible Book Value por ação = (Patrimônio Líquido − Goodwill) ÷ Ações.
+
+Representa o valor contábil tangível por ação, base para o P/TBV.',
+    'Total de Ativos': 'Total de ativos do último trimestre. Para bancos, o crescimento de ativos é proxy do crescimento da carteira de crédito.',
+  };
+
+  function tip2(key) {
+    const txt = FIN_TOOLTIPS[key];
+    if (!txt) return '';
+    const escaped = txt.replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
+    return `<span class="info-icon" data-tip="${escaped}" onclick="showTooltipModal(this)">ⓘ</span>`;
   }
-  updateSelectionUI();
-}
 
-function updateSelectionUI() {
-  const preview      = document.getElementById('selected-preview');
-  const headerSelected = document.getElementById('header-selected');
-  const headerChips  = document.getElementById('header-chips');
-  const btnMain      = document.getElementById('btn-analyze-main');
+  const cc = x => x == null ? '' : x > 0 ? 'green' : x < 0 ? 'red' : '';
 
-  if (selectedTickers.length === 0) {
-    preview.innerHTML = '<div class="sidebar-hint">Clique nas ações<br>para selecionar</div>';
-    if (btnMain) btnMain.disabled = true;
-    return;
-  }
-
-  preview.innerHTML = selectedTickers.map(t =>
-    `<div class="preview-chip" style="background:${t.color}">${t.symbol} — ${t.name}</div>`
-  ).join('');
-
-  if (btnMain) btnMain.disabled = false;
-
-  if (headerChips) {
-    headerChips.innerHTML = selectedTickers.map(t =>
-      `<div class="header-chip" style="background:${t.color}">${t.symbol}</div>`
-    ).join('');
-  }
-}
-
-function clearSelection() {
-  selectedTickers.forEach(t => {
-    const card = document.getElementById(`card-${t.symbol}`);
-    if (card) { card.classList.remove('selected'); card.style.borderColor = ''; }
-  });
-  selectedTickers = [];
-  updateSelectionUI();
-  goHome();
-}
-
-// ─── Format helpers ───────────────────────────────────────────────────────────
-const fmt = {
-  pct:  v => v == null ? '—' : (v * 100).toFixed(1) + '%',
-  pct1: v => v == null ? '—' : (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%',
-  x:    v => v == null ? '—' : v.toFixed(1) + 'x',
-  $:    v => v == null ? '—' : '$' + v.toFixed(2),
-  bn:   v => v == null ? '—' : '$' + (v / 1e9).toFixed(1) + 'B',
-};
-function colorClass(v) { return v == null ? '' : v > 0 ? 'pos' : v < 0 ? 'neg' : ''; }
-
-// ─── Suggestions ──────────────────────────────────────────────────────────────
-function filterSuggestions(idx) {
-  const input = document.getElementById(`main-t${idx}`);
-  const box   = document.getElementById(`sug-${idx}`);
-  const q = (input.value || '').toUpperCase().trim();
-  if (!q) { box.classList.remove('open'); return; }
-  const matches = POPULAR.filter(p => p.s.startsWith(q) || p.n.toUpperCase().includes(q)).slice(0, 6);
-  if (!matches.length) { box.classList.remove('open'); return; }
-  box.innerHTML = matches.map(p =>
-    `<div class="sug-item" onclick="selectTicker(${idx},'${p.s}')">
-      <span class="sug-ticker">${p.s}</span>
-      <span class="sug-name">${p.n}</span>
-    </div>`
-  ).join('');
-  box.classList.add('open');
-}
-
-function selectTicker(idx, ticker) {
-  const input = document.getElementById(`main-t${idx}`);
-  input.value = ticker;
-  document.getElementById(`sug-${idx}`).classList.remove('open');
-  // Sync header input if exists
-  const hi = document.getElementById(`h-t${idx}`);
-  if (hi) hi.value = ticker;
-}
-
-function handleKey(e, idx) {
-  if (e.key === 'Enter') { closeSuggestions(); runAnalysis(); }
-  if (e.key === 'Escape') closeSuggestions();
-}
-
-function closeSuggestions() {
-  document.querySelectorAll('.suggestions').forEach(s => s.classList.remove('open'));
-}
-document.addEventListener('click', e => {
-  if (!e.target.closest('.ticker-slot') && !e.target.closest('.header-ticker-wrapper')) closeSuggestions();
-});
-
-// ─── Navigation ───────────────────────────────────────────────────────────────
-function goHome() {
-  document.getElementById('results').classList.add('hidden');
-  document.getElementById('error-box').classList.add('hidden');
-  document.getElementById('landing').classList.remove('hidden');
-  document.getElementById('header-selected').style.display = 'none';
-  allResults = [];
-}
-
-function setTickers(t0, t1, t2) {
-  document.getElementById('main-t0').value = t0 || '';
-  document.getElementById('main-t1').value = t1 || '';
-  document.getElementById('main-t2').value = t2 || '';
-  runAnalysis();
-}
-
-// ─── Header search sync ───────────────────────────────────────────────────────
-function showHeaderSelection() {
-  const el = document.getElementById('header-selected');
-  if (el) el.style.display = 'flex';
-}
-
-// ─── Status visual dos cards (carregado = vibrante, pendente = pálido) ───────
-async function applyCardStatus() {
-  try {
-    const r = await fetch('/api/quota-check');
-    const d = await r.json();
-    d.tickers.forEach(t => {
-      const card = document.getElementById(`card-${t.symbol}`);
-      if (!card) return;
-      if (t.has_data) {
-        card.classList.remove('ticker-card--pending');
-        card.classList.add('ticker-card--loaded');
-      } else {
-        card.classList.remove('ticker-card--loaded');
-        card.classList.add('ticker-card--pending');
-      }
-    });
-  } catch(e) { console.log('Erro ao verificar status:', e); }
-}
-
-// Aplica visual de carregado/pendente nos cards
-document.addEventListener('DOMContentLoaded', () => applyCardStatus());
-
-// ─── Main analysis ────────────────────────────────────────────────────────────
-async function runAnalysis() {
-  const tickers = selectedTickers.map(t => t.symbol);
-  if (!tickers.length) return;
-  document.getElementById('landing').classList.add('hidden');
-  document.getElementById('results').classList.add('hidden');
-  document.getElementById('error-box').classList.add('hidden');
-  document.getElementById('loading').classList.remove('hidden');
-
-  const btnMain   = document.getElementById('btn-text-main');
-  const btnHeader = document.getElementById('btn-text-header');
-  if (btnMain)   btnMain.textContent   = 'Buscando…';
-  if (btnHeader) btnHeader.textContent = 'Buscando…';
-
-  try {
-    const res  = await fetch('/api/analyze', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({tickers})
-    });
-    const data = await res.json();
-
-    if (data.errors?.length) {
-      const eb = document.getElementById('error-box');
-      eb.innerHTML = data.errors.map(e => `<b>${e.ticker}</b>: ${e.error}`).join('<br>');
-      eb.classList.remove('hidden');
-    }
-    if (data.results?.length) {
-      allResults = data.results;
-      showHeaderSelection();
-      renderResults(data.results);
-    }
-  } catch(e) {
-    const eb = document.getElementById('error-box');
-    eb.textContent = 'Erro de conexão: ' + e.message;
-    eb.classList.remove('hidden');
-    document.getElementById('landing').classList.remove('hidden');
-    document.getElementById('header-search').style.display = 'none';
-  } finally {
-    document.getElementById('loading').classList.add('hidden');
-    if (btnMain)   btnMain.textContent   = 'Analisar';
-    if (btnHeader) btnHeader.textContent = 'Analisar';
-  }
-}
-
-// ─── Render ───────────────────────────────────────────────────────────────────
-function renderResults(results) {
-  const container = document.getElementById('results');
-  container.innerHTML = '';
-  if (results.length > 1) container.appendChild(buildComparisonPanel(results));
-  results.forEach((r, idx) => container.appendChild(buildCompanyCard(r, idx)));
-  container.classList.remove('hidden');
-}
-
-// ─── Comparison ───────────────────────────────────────────────────────────────
-function buildComparisonPanel(results) {
-  const metrics = [
-    {label:'Preço',              fn: r => fmt.$(r.price),                raw: r => r.price},
-    {label:'Margem de Segurança (Média)', fn: r => fmt.pct1(r.valuation.avg_ms), raw: r => r.valuation.avg_ms},
-    {label:'EV / EBIT',          fn: r => fmt.x(r.valuation.ev_ebit),   raw: r => r.valuation.ev_ebit},
-    {label:'ROIC (último)',      fn: r => fmt.pct(r.valuation.roic_last),raw: r => r.valuation.roic_last},
-    {label:'WACC (último)',      fn: r => fmt.pct(r.valuation.wacc_last),raw: r => r.valuation.wacc_last},
-    {label:'Spread ROIC−WACC',  fn: r => fmt.pct1(r.valuation.econ_spread), raw: r => r.valuation.econ_spread},
-    {label:'FCF Yield',          fn: r => fmt.pct(r.valuation.fcf_yield),raw: r => r.valuation.fcf_yield},
-    {label:'Div Yield',          fn: r => fmt.pct(r.valuation.div_yield),raw: r => r.valuation.div_yield},
-    {label:'Market Cap',         fn: r => fmt.bn(r.valuation.mktcap),   raw: r => r.valuation.mktcap},
+  const kpis = [
+    {label:'Cotação',          value: fmt2.$(v.price)},
+    {label:'P/E',              value: fmt2.x(v.p_e),         cls: ''},
+    {label:'P/TBV',            value: fmt2.x(v.p_tbv),       cls: ''},
+    {label:'ROE',              value: fmt2.pct(v.roe),        cls: cc(v.roe - 0.10)},
+    {label:'NIM (proxy)',      value: fmt2.pct(v.nim_proxy)},
+    {label:'Eficiência',       value: fmt2.pct(v.efficiency), cls: v.efficiency ? (v.efficiency < 0.50 ? 'green' : 'red') : ''},
+    {label:'Payout',           value: fmt2.pct(v.payout)},
+    {label:'Div Yield',        value: fmt2.pct(v.div_yield),  cls: cc(v.div_yield)},
+    {label:'TBV / Ação',       value: fmt2.$(v.tbv_ps)},
+    {label:'BV / Ação',        value: fmt2.$(v.bv_ps)},
+    {label:'Total de Ativos',  value: fmt2.bn(v.total_assets)},
+    {label:'Patrimônio Líq.',  value: fmt2.bn(v.equity_abs)},
   ];
-  const cards = metrics.map(m => {
-    const rows = results.map(r => `<div class="comp-row">
-      <span class="comp-ticker">${r.ticker}</span>
-      <span class="comp-val ${colorClass(m.raw(r))}">${m.fn(r)}</span></div>`).join('');
-    return `<div class="comp-metric-card"><div class="comp-metric-title">${m.label}</div>${rows}</div>`;
+
+  const kpiHtml = kpis.map(k => `<div class="val-card">
+    <div class="val-label">${k.label}${tip2(k.label)}</div>
+    <div class="val-value ${k.cls||''}">${k.value}</div>
+  </div>`).join('');
+
+  // Tabela Graham adaptada (EPS e Dividendos)
+  const msRows = [
+    {metric:'EPS (Lucro Líq./Ação)', tip:'P/E', eps: fmt2.$(v.eps_ps),  cagr: fmt2.pct(v.eps_cagr), graham: fmt2.$(v.graham_eps), ms: v.ms_eps},
+    {metric:'Dividendos/Ação',       tip:'Payout', eps: fmt2.$(v.div_ps), cagr: fmt2.pct(v.div_cagr), graham: fmt2.$(v.graham_div), ms: v.ms_div},
+  ].map(row => {
+    const ms = row.ms;
+    const barPct = ms == null ? 0 : Math.min(Math.abs(ms) * 100, 100);
+    const barColor = ms == null ? '#64748b' : (ms >= 0 ? '#22c55e' : '#ef4444');
+    const barStyle = ms != null && ms < 0
+      ? `right:50%;width:${barPct/2}%`
+      : `left:50%;width:${barPct/2}%`;
+    return `<tr>
+      <td><b>${row.metric}</b></td>
+      <td>${row.eps}</td><td>${row.cagr}</td><td>${row.graham}</td>
+      <td class="${cc(ms)}" style="font-weight:600">${ms==null?'—':fmt2.pct1(ms)}</td>
+      <td><div class="ms-bar-bg" style="position:relative">
+        <div class="ms-bar-fill" style="${barStyle};background:${barColor};position:absolute;top:0;height:100%"></div>
+        <div style="position:absolute;top:0;left:50%;width:1px;height:100%;background:var(--border)"></div>
+      </div></td>
+    </tr>`;
   }).join('');
-  const div = document.createElement('div');
-  div.innerHTML = `<div class="company-card">
-    <div class="company-header">
-      <div class="company-title">
-        <span style="font-size:17px;font-weight:700">Comparação</span>
-        <span style="color:var(--text3);font-size:12px">${results.map(r=>r.ticker).join(' · ')}</span>
-      </div>
+
+  return `
+    <div class="fin-notice">
+      ⚠️ <b>Instituição Financeira</b> — framework adaptado (Damodaran). ROIC/EVA/FCF não aplicáveis.
+      Métricas: ROE · P/TBV · NIM · Eficiência · Payout.
     </div>
-    <div style="padding:20px"><div class="comparison-grid">${cards}</div></div>
-  </div>`;
-  return div.firstElementChild;
+    <div class="valuation-grid">${kpiHtml}</div>
+    <h3 style="margin-bottom:8px;font-size:13px;color:var(--text2)">Margem de Segurança — Fórmula de Graham (adaptada)</h3>
+    <p style="font-size:11px;color:var(--text3);margin-bottom:12px">
+      V = EPS × (8,5 + 2 × CAGR%) × 4,4 / Y &nbsp;·&nbsp; EPS = Lucro Líquido/Ação &nbsp;·&nbsp; CAGR = crescimento de receita (proxy)
+    </p>
+    <div class="ms-table-wrap"><table class="ms-table">
+      <thead><tr><th>Métrica</th><th>Valor/Ação TTM</th><th>CAGR</th><th>Graham (V)</th><th>Margem de Segurança</th><th></th></tr></thead>
+      <tbody>${msRows}</tbody>
+      <tfoot><tr style="font-weight:700;border-top:2px solid var(--border)">
+        <td colspan="4" style="text-align:right;padding-right:14px">Média (EPS + Div)</td>
+        <td class="${cc(v.avg_ms)}" style="font-size:15px">${v.avg_ms==null?'—':((v.avg_ms>=0?'+':'')+(v.avg_ms*100).toFixed(1)+'%')}</td><td></td>
+      </tr></tfoot>
+    </table></div>`;
 }
 
-// ─── Company Card ─────────────────────────────────────────────────────────────
-function buildCompanyCard(r, idx) {
-  const color = r.color || ['#4f7cff','#22c55e','#f59e0b'][idx % 3];
-  const v = r.valuation;
-  const card = document.createElement('div');
-  card.className = 'company-card';
-  card.innerHTML = `
-    <div class="company-header">
-      <div class="company-title">
-        <span class="ticker-badge" style="background:${color}">${r.ticker}</span>
-        <div>
-          <div class="company-name">${r.name}</div>
-          <div class="company-meta">${r.sector}${r.industry ? ' · ' + r.industry : ''} · ${r.exchange} · ${r.currency}</div>
-        </div>
-      </div>
-      <div class="company-price">
-        <div class="price-value">${fmt.$(r.price)}</div>
-        <div class="price-label">Cotação atual</div>
-      </div>
-    </div>
-    <div class="tabs" id="tabs-${r.ticker}">
-      <button class="tab-btn active" onclick="switchTab('${r.ticker}','valuation',this)">📊 Valuation</button>
-      <button class="tab-btn" onclick="switchTab('${r.ticker}','charts',this)">📈 Gráficos</button>
-      <button class="tab-btn" onclick="switchTab('${r.ticker}','table',this)">🗂 Trimestres (${r.rows.length})</button>
-      <button class="tab-btn" onclick="switchTab('${r.ticker}','glossary',this)">📖 Glossário</button>
-    </div>
-    <div id="panel-${r.ticker}-valuation" class="tab-panel active">${buildValuationPanel(r, v)}</div>
-    <div id="panel-${r.ticker}-charts"    class="tab-panel">${buildChartsPanel(r)}</div>
-    <div id="panel-${r.ticker}-table"     class="tab-panel">${buildTablePanel(r)}</div>
-    <div id="panel-${r.ticker}-glossary"  class="tab-panel">${buildGlossaryPanel()}</div>`;
-  return card;
-}
 
-function switchTab(ticker, tab, btnEl) {
-  document.querySelectorAll(`#tabs-${ticker} .tab-btn`).forEach(b => b.classList.remove('active'));
-  document.querySelectorAll(`[id^="panel-${ticker}-"]`).forEach(p => p.classList.remove('active'));
-  btnEl.classList.add('active');
-  document.getElementById(`panel-${ticker}-${tab}`).classList.add('active');
-  if (tab === 'charts') renderCharts(ticker);
-}
-
-// ─── Valuation Panel ──────────────────────────────────────────────────────────
-// ─── Definições de tooltip por métrica ───────────────────────────────────────
 const TOOLTIPS = {
   'Cotação': 'Última cotação disponível no banco de dados. Atualizada diariamente pelo script de carga.',
   'EV / EBIT': 'Enterprise Value dividido pelo EBIT (TTM). Mede quanto o mercado paga pelo lucro operacional. <15x = barato; >30x = caro (regra geral, varia por setor).',
