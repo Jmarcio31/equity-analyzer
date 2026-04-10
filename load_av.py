@@ -218,24 +218,26 @@ def latest_quarter(c,s):
         row = cur.fetchone()
     return str(row[0]) if row and row[0] else None
 
-def has_new_quarter(c, s):
+def has_new_quarter(c, s, days_threshold=95):
     """
-    Verifica se a AV tem trimestre mais recente que o banco.
-    Faz apenas 1 requisição (INCOME_STATEMENT) para checar.
+    Verifica se provavelmente há trimestre novo disponível,
+    baseado na data do último trimestre no banco.
+    NÃO faz requisições à API — zero custo.
+
+    Lógica: trimestres são divulgados ~45-60 dias após o fim do período.
+    Se o último trimestre no banco tem mais de 95 dias, provavelmente
+    já há um novo disponível.
     """
+    from datetime import datetime, date
     latest = latest_quarter(c, s)
     if not latest:
-        return True  # sem dados — precisa carregar tudo
+        return True  # sem dados — precisa carregar
     try:
-        data = get("INCOME_STATEMENT", s)
-        quarters = data.get("quarterlyReports", [])
-        if not quarters:
-            return False
-        newest_api = quarters[0].get("fiscalDateEnding","")
-        return newest_api > latest  # trimestre novo disponível
-    except Exception as e:
-        print(f"  ⚠️  Erro ao checar {s}: {e}")
-        return False
+        latest_date = datetime.strptime(latest[:10], "%Y-%m-%d").date()
+        days_since = (date.today() - latest_date).days
+        return days_since >= days_threshold
+    except Exception:
+        return True  # em caso de erro, melhor tentar
 def clear(c,s):
     with c.cursor() as cur:
         for t in ["financials","prices","price_history","update_log"]:
@@ -318,7 +320,7 @@ def main():
     elif update_mode:
         # Verifica quais tickers têm trimestre novo disponível
         # Usa 1 req por ticker para checar — depois 4 req para carregar
-        print("\nVerificando trimestres novos disponíveis na API...")
+        print("\nVerificando trimestres pendentes (por data, sem req à API)...")
         todo=[]
         for t in TICKERS:
             if not loaded(c,t["symbol"]):
@@ -326,10 +328,17 @@ def main():
                 todo.append(t)
             elif has_new_quarter(c,t["symbol"]):
                 lq = latest_quarter(c,t["symbol"])
-                print(f"  {t['symbol']}: trimestre novo disponível (banco: {lq}) ✓")
+                from datetime import date, datetime
+                lq_date = datetime.strptime(lq[:10], "%Y-%m-%d").date() if lq else None
+                days = (date.today() - lq_date).days if lq_date else 0
+                print(f"  {t['symbol']}: último trimestre {lq} ({days} dias) — atualizando")
                 todo.append(t)
             else:
-                print(f"  {t['symbol']}: banco atualizado ✓")
+                lq = latest_quarter(c,t["symbol"])
+                from datetime import date, datetime
+                lq_date = datetime.strptime(lq[:10], "%Y-%m-%d").date() if lq else None
+                days = (date.today() - lq_date).days if lq_date else 0
+                print(f"  {t['symbol']}: atualizado ({lq}, {days} dias) ✓")
     else:
         todo=[t for t in TICKERS if not loaded(c,t["symbol"])]
     ln=sum(1 for t in TICKERS if loaded(c,t["symbol"]))
