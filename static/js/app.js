@@ -1,3 +1,10 @@
+// ─── Utilitários de data ─────────────────────────────────────────────────────
+function fmtDate(d) {
+  if (!d) return '';
+  const [y, m, day] = d.split('-');
+  return `${day}/${m}/${y}`;
+}
+
 // ─── Definições de tooltip por métrica ───────────────────────────────────────// ─── Painel de valuation para financeiras ────────────────────────────────────
 function buildValuationPanelFinancial(r, v) {
   const fmt2 = {
@@ -72,6 +79,7 @@ Representa o valor contábil tangível por ação, base para o P/TBV.',
   const kpiHtml = kpis.map(k => `<div class="val-card">
     <div class="val-label">${k.label}${tip2(k.label)}</div>
     <div class="val-value ${k.cls||''}">${k.value}</div>
+    ${k.label === 'Cotação' && r.price_date ? `<div class="val-date">em ${fmtDate(r.price_date)}</div>` : ''}
   </div>`).join('');
 
   // Tabela Graham adaptada (EPS e Dividendos)
@@ -118,7 +126,7 @@ Representa o valor contábil tangível por ação, base para o P/TBV.',
 
 
 const TOOLTIPS = {
-  'Cotação': 'Última cotação disponível no banco de dados. Atualizada diariamente pelo script de carga.',
+  'Cotação': 'Última cotação registrada no banco de dados.\nData indicada abaixo do valor.\n\nAtualização automática: dias úteis via GitHub Actions.\nTer/Qui → tickers 21-28 | Qua/Sex → tickers 1-20.',
   'EV / EBIT': 'Enterprise Value dividido pelo EBIT (TTM). Mede quanto o mercado paga pelo lucro operacional. <15x = barato; >30x = caro (regra geral, varia por setor).',
   'Market Cap': 'Preço × Ações em circulação do último trimestre disponível.',
   'Enterprise Value': 'Market Cap + Dívida Total − Caixa Completo (ST + LT investments). Representa o valor total da empresa para um comprador.',
@@ -246,6 +254,7 @@ function buildValuationPanel(r, v) {
   const kpiHtml = kpis.map(k => `<div class="val-card">
     <div class="val-label">${k.label}${tooltip(k.label)}</div>
     <div class="val-value ${k.cls||''}">${k.value}</div>
+    ${k.label === 'Cotação' && r.price_date ? `<div class="val-date">em ${fmtDate(r.price_date)}</div>` : ''}
   </div>`).join('');
 
   const msRows = [

@@ -519,3 +519,11 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
   line-height: 1.5;
 }
 .fin-notice b { color: #f59e0b; }
+
+/* ── Data da cotação ── */
+.val-date {
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 2px;
+  font-style: italic;
+}

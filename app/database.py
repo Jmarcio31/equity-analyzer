@@ -125,12 +125,26 @@ def load_current_price(symbol):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT close FROM prices
+                SELECT close, price_date::text FROM prices
                 WHERE symbol = %s
                 ORDER BY price_date DESC LIMIT 1
             """, (symbol,))
             row = cur.fetchone()
     return float(row[0]) if row else 0.0
+
+def load_current_price_with_date(symbol):
+    """Retorna (price, price_date) do registro mais recente."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT close::float, price_date::text FROM prices
+                WHERE symbol = %s
+                ORDER BY price_date DESC LIMIT 1
+            """, (symbol,))
+            row = cur.fetchone()
+    if row:
+        return float(row[0]), row[1]
+    return 0.0, None
 
 
 def needs_price_update(symbol):

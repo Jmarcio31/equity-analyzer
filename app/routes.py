@@ -127,8 +127,7 @@ def analyze():
                 if price > 0:
                     db.save_current_price(symbol, price)
                     db.log_update(symbol, "price")
-            else:
-                price = db.load_current_price(symbol)
+            price, price_date = db.load_current_price_with_date(symbol)
 
             # Histórico de preços
             start_date    = rows[0]["date"] if rows else None
@@ -146,6 +145,7 @@ def analyze():
                 "sector":        ticker_info.get("sector", ""),
                 "industry":      "",
                 "price":         price,
+                "price_date":    price_date,
                 "currency":      "USD",
                 "exchange":      "",
                 "description":   "",
