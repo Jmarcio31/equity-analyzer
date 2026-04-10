@@ -39,11 +39,6 @@ TICKERS = [
     # Materials
     {"symbol": "VALE",  "name": "Vale S.A.",            "sector": "Materials"},
     {"symbol": "SUZ",   "name": "Suzano S.A.",          "sector": "Materials"},
-    # Industrial
-    {"symbol": "CAT",   "name": "Caterpillar",          "sector": "Industrial"},
-    {"symbol": "HON",   "name": "Honeywell",            "sector": "Industrial"},
-    # Telecom
-    {"symbol": "T",     "name": "AT&T",                 "sector": "Telecom"},
 ]
 
 SYMBOLS = [t["symbol"] for t in TICKERS]
@@ -56,6 +51,4 @@ SECTOR_COLORS = {
     "Healthcare": "#a78bfa",
     "Energy":     "#f87171",
     "Materials":  "#2dd4bf",
-    "Industrial": "#94a3b8",
-    "Telecom":    "#fb923c",
 }
