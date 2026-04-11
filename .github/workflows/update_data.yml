@@ -1,26 +1,13 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# GitHub Actions — Manutenção automática de dados
-#
-# JOB 1 — update_fundamentals (segunda-feira às 14:00 UTC / 11:00 BRT)
-# JOB 2 — update_prices (ter a sex às 22:00 UTC / 19:00 BRT)
-#
-# NÃO roda em push — apenas por agendamento ou execução manual.
-# ─────────────────────────────────────────────────────────────────────────────
-
 name: Equity Data Maintenance
 
 on:
   schedule:
-    # Fundamentais — toda segunda às 14:00 UTC (11:00 BRT)
     - cron: '0 14 * * 1'
-    # Cotações — ter a sex às 22:00 UTC (19:00 BRT)
     - cron: '0 22 * * 2-5'
-
-  # Execução manual com escolha de modo
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Modo de execução'
+        description: 'Modo'
         required: true
         default: 'prices'
         type: choice
@@ -29,22 +16,17 @@ on:
           - update
 
 jobs:
-  # ── Fundamentais (segunda ou manual com mode=update) ──────────────────────
   update_fundamentals:
-    name: Atualizar fundamentais
+    name: Atualizar fundamentais (seg)
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    if: >
-      (github.event_name == 'schedule' && github.event.schedule == '0 14 * * 1') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'update')
-
+    if: "github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'update' || github.event_name == 'schedule' && github.event.schedule == '0 14 * * 1'"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - run: pip install requests psycopg2-binary
-
       - name: Atualiza fundamentais
         env:
           AV_API_KEY:   ${{ secrets.AV_API_KEY }}
@@ -54,29 +36,22 @@ jobs:
 import os
 with open('load_av.py') as f: code = f.read()
 code = code.replace('AV_KEY       = "DZHRZQ6SWSMUBW4J"', f'AV_KEY       = "{os.environ["AV_API_KEY"]}"')
-code = code.replace(
-    'DATABASE_URL = "postgresql://equity_analyzer_db_hx38_user:YUfgSMUWH6OuWEacmiXSwTyPx5ow163n@dpg-d7aghkua2pns73dg3rd0-a.ohio-postgres.render.com/equity_analyzer_db_hx38"',
-    f'DATABASE_URL = "{os.environ["DATABASE_URL"]}"')
+code = code.replace('DATABASE_URL = "postgresql://equity_analyzer_db_hx38_user:YUfgSMUWH6OuWEacmiXSwTyPx5ow163n@dpg-d7aghkua2pns73dg3rd0-a.ohio-postgres.render.com/equity_analyzer_db_hx38"', f'DATABASE_URL = "{os.environ["DATABASE_URL"]}"')
 with open('load_av.py', 'w') as f: f.write(code)
 PYEOF
           python load_av.py --update
 
-  # ── Cotações (ter-sex ou manual com mode=prices) ──────────────────────────
   update_prices:
-    name: Atualizar cotações
+    name: Atualizar cotações (ter-sex)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: >
-      (github.event_name == 'schedule' && github.event.schedule == '0 22 * * 2-5') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'prices')
-
+    if: "github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'prices' || github.event_name == 'schedule' && github.event.schedule == '0 22 * * 2-5'"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - run: pip install requests psycopg2-binary
-
       - name: Atualiza cotações
         env:
           AV_API_KEY:   ${{ secrets.AV_API_KEY }}
@@ -86,9 +61,7 @@ PYEOF
 import os
 with open('load_av.py') as f: code = f.read()
 code = code.replace('AV_KEY       = "DZHRZQ6SWSMUBW4J"', f'AV_KEY       = "{os.environ["AV_API_KEY"]}"')
-code = code.replace(
-    'DATABASE_URL = "postgresql://equity_analyzer_db_hx38_user:YUfgSMUWH6OuWEacmiXSwTyPx5ow163n@dpg-d7aghkua2pns73dg3rd0-a.ohio-postgres.render.com/equity_analyzer_db_hx38"',
-    f'DATABASE_URL = "{os.environ["DATABASE_URL"]}"')
+code = code.replace('DATABASE_URL = "postgresql://equity_analyzer_db_hx38_user:YUfgSMUWH6OuWEacmiXSwTyPx5ow163n@dpg-d7aghkua2pns73dg3rd0-a.ohio-postgres.render.com/equity_analyzer_db_hx38"', f'DATABASE_URL = "{os.environ["DATABASE_URL"]}"')
 with open('load_av.py', 'w') as f: f.write(code)
 PYEOF
           python load_av.py --prices
