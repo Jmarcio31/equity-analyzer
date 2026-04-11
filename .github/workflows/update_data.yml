@@ -27,18 +27,13 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests psycopg2-binary
-      - name: Atualiza fundamentais
+      - name: Injeta credenciais
         env:
-          AV_API_KEY:   ${{ secrets.AV_API_KEY }}
+          AV_API_KEY: ${{ secrets.AV_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          python - << 'PYEOF'
-import os
-with open('load_av.py') as f: code = f.read()
-code = code.replace('AV_KEY       = "DZHRZQ6SWSMUBW4J"', f'AV_KEY       = "{os.environ["AV_API_KEY"]}"')
-code = code.replace('DATABASE_URL = "postgresql://equity_analyzer_db_hx38_user:YUfgSMUWH6OuWEacmiXSwTyPx5ow163n@dpg-d7aghkua2pns73dg3rd0-a.ohio-postgres.render.com/equity_analyzer_db_hx38"', f'DATABASE_URL = "{os.environ["DATABASE_URL"]}"')
-with open('load_av.py', 'w') as f: f.write(code)
-PYEOF
+          sed -i "s|AV_KEY       = \"DZHRZQ6SWSMUBW4J\"|AV_KEY       = \"$AV_API_KEY\"|g" load_av.py
+          sed -i "s|DATABASE_URL = \"postgresql://equity_analyzer_db_hx38_user:YUfgSMUWH6OuWEacmiXSwTyPx5ow163n@dpg-d7aghkua2pns73dg3rd0-a.ohio-postgres.render.com/equity_analyzer_db_hx38\"|DATABASE_URL = \"$DATABASE_URL\"|g" load_av.py
           python load_av.py --update
 
   update_prices:
@@ -52,16 +47,11 @@ PYEOF
         with:
           python-version: '3.11'
       - run: pip install requests psycopg2-binary
-      - name: Atualiza cotações
+      - name: Injeta credenciais
         env:
-          AV_API_KEY:   ${{ secrets.AV_API_KEY }}
+          AV_API_KEY: ${{ secrets.AV_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          python - << 'PYEOF'
-import os
-with open('load_av.py') as f: code = f.read()
-code = code.replace('AV_KEY       = "DZHRZQ6SWSMUBW4J"', f'AV_KEY       = "{os.environ["AV_API_KEY"]}"')
-code = code.replace('DATABASE_URL = "postgresql://equity_analyzer_db_hx38_user:YUfgSMUWH6OuWEacmiXSwTyPx5ow163n@dpg-d7aghkua2pns73dg3rd0-a.ohio-postgres.render.com/equity_analyzer_db_hx38"', f'DATABASE_URL = "{os.environ["DATABASE_URL"]}"')
-with open('load_av.py', 'w') as f: f.write(code)
-PYEOF
+          sed -i "s|AV_KEY       = \"DZHRZQ6SWSMUBW4J\"|AV_KEY       = \"$AV_API_KEY\"|g" load_av.py
+          sed -i "s|DATABASE_URL = \"postgresql://equity_analyzer_db_hx38_user:YUfgSMUWH6OuWEacmiXSwTyPx5ow163n@dpg-d7aghkua2pns73dg3rd0-a.ohio-postgres.render.com/equity_analyzer_db_hx38\"|DATABASE_URL = \"$DATABASE_URL\"|g" load_av.py
           python load_av.py --prices
