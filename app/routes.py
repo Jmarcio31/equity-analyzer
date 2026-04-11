@@ -123,10 +123,13 @@ def analyze():
 
             # Preço — do banco se recente, senão busca
             if db.needs_price_update(symbol):
-                price = fetch_current_price(symbol)
-                if price > 0:
-                    db.save_current_price(symbol, price)
-                    db.log_update(symbol, "price")
+                try:
+                    price = fetch_current_price(symbol)
+                    if price > 0:
+                        db.save_current_price(symbol, price)
+                        db.log_update(symbol, "price")
+                except Exception:
+                    pass  # Rate limit ou erro — usa preço do banco
             price, price_date = db.load_current_price_with_date(symbol)
 
             # Histórico de preços
