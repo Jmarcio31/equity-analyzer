@@ -1,3 +1,236 @@
+// ─── Estado global ────────────────────────────────────────────────────────────
+let allResults       = [];
+let selectedTickers  = [];
+const chartInstances = {};
+
+// ─── Formatadores ─────────────────────────────────────────────────────────────
+const fmt = {
+  pct:  v => v == null ? '—' : (v * 100).toFixed(1) + '%',
+  pct1: v => v == null ? '—' : (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%',
+  x:    v => v == null ? '—' : v.toFixed(1) + 'x',
+  $:    v => v == null ? '—' : '$' + v.toFixed(2),
+  bn:   v => v == null ? '—' : '$' + (Math.abs(v) >= 1e12 ? (v/1e12).toFixed(1)+'T' : Math.abs(v) >= 1e9 ? (v/1e9).toFixed(1)+'B' : (v/1e6).toFixed(0)+'M'),
+};
+
+function colorClass(v) {
+  return v == null ? '' : v > 0 ? 'green' : v < 0 ? 'red' : '';
+}
+
+// ─── Seleção de cards na landing ─────────────────────────────────────────────
+function toggleTicker(symbol, name, color) {
+  const idx  = selectedTickers.findIndex(t => t.symbol === symbol);
+  const card = document.getElementById('card-' + symbol);
+  if (idx >= 0) {
+    selectedTickers.splice(idx, 1);
+    card.classList.remove('selected');
+    card.style.borderColor = '';
+  } else {
+    if (selectedTickers.length >= 3) {
+      const removed = selectedTickers.shift();
+      const old = document.getElementById('card-' + removed.symbol);
+      if (old) { old.classList.remove('selected'); old.style.borderColor = ''; }
+    }
+    selectedTickers.push({symbol, name, color});
+    card.classList.add('selected');
+    card.style.borderColor = color;
+    const chk = card.querySelector('.ticker-card-check');
+    if (chk) chk.style.color = color;
+  }
+  updateSelectionUI();
+}
+
+function updateSelectionUI() {
+  const preview = document.getElementById('selected-preview');
+  const btn     = document.getElementById('btn-analyze-main');
+  const hChips  = document.getElementById('header-chips');
+  const hSel    = document.getElementById('header-selected');
+
+  if (selectedTickers.length === 0) {
+    if (preview) preview.innerHTML = '<div class="sidebar-hint">Clique nas ações<br>para selecionar</div>';
+    if (btn)     btn.disabled = true;
+    return;
+  }
+  if (preview) {
+    preview.innerHTML = selectedTickers.map(t =>
+      '<div class="preview-chip" style="background:' + t.color + '">' + t.symbol + ' — ' + t.name + '</div>'
+    ).join('');
+  }
+  if (btn)    btn.disabled = false;
+  if (hChips) hChips.innerHTML = selectedTickers.map(t =>
+    '<div class="header-chip" style="background:' + t.color + '">' + t.symbol + '</div>'
+  ).join('');
+}
+
+function clearSelection() {
+  selectedTickers.forEach(t => {
+    const c = document.getElementById('card-' + t.symbol);
+    if (c) { c.classList.remove('selected'); c.style.borderColor = ''; }
+  });
+  selectedTickers = [];
+  updateSelectionUI();
+  goHome();
+}
+
+// ─── Análise ──────────────────────────────────────────────────────────────────
+async function runAnalysis() {
+  const tickers = selectedTickers.map(t => t.symbol);
+  if (!tickers.length) return;
+
+  document.getElementById('landing').classList.add('hidden');
+  document.getElementById('results').classList.add('hidden');
+  document.getElementById('error-box').classList.add('hidden');
+  document.getElementById('loading').classList.remove('hidden');
+
+  const btnTxt = document.getElementById('btn-text-main');
+  if (btnTxt) btnTxt.textContent = 'Buscando…';
+
+  try {
+    const res  = await fetch('/api/analyze', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({tickers})
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      showError(data.error);
+      return;
+    }
+    if (data.errors && data.errors.length) {
+      const eb = document.getElementById('error-box');
+      eb.innerHTML = data.errors.map(e => '<b>' + e.ticker + '</b>: ' + e.error).join('<br>');
+      eb.classList.remove('hidden');
+    }
+    if (data.results && data.results.length) {
+      allResults = data.results;
+      const hSel = document.getElementById('header-selected');
+      if (hSel) hSel.style.display = 'flex';
+      renderResults(data.results);
+    }
+  } catch(e) {
+    showError('Erro de conexão: ' + e.message);
+  } finally {
+    document.getElementById('loading').classList.add('hidden');
+    if (btnTxt) btnTxt.textContent = 'Analisar';
+  }
+}
+
+function showError(msg) {
+  const eb = document.getElementById('error-box');
+  eb.textContent = msg;
+  eb.classList.remove('hidden');
+  document.getElementById('landing').classList.remove('hidden');
+}
+
+// ─── Navegação ────────────────────────────────────────────────────────────────
+function goHome() {
+  document.getElementById('results').classList.add('hidden');
+  document.getElementById('error-box').classList.add('hidden');
+  document.getElementById('landing').classList.remove('hidden');
+  const hSel = document.getElementById('header-selected');
+  if (hSel) hSel.style.display = 'none';
+  allResults = [];
+}
+
+// ─── Status visual dos cards ──────────────────────────────────────────────────
+async function applyCardStatus() {
+  try {
+    const r = await fetch('/api/quota-check');
+    const d = await r.json();
+    d.tickers.forEach(t => {
+      const card = document.getElementById('card-' + t.symbol);
+      if (!card) return;
+      if (t.has_data) {
+        card.classList.remove('ticker-card--pending');
+        card.classList.add('ticker-card--loaded');
+      } else {
+        card.classList.remove('ticker-card--loaded');
+        card.classList.add('ticker-card--pending');
+      }
+    });
+  } catch(e) { console.log('Erro ao verificar status:', e); }
+}
+
+document.addEventListener('DOMContentLoaded', () => applyCardStatus());
+
+// ─── Render resultados ────────────────────────────────────────────────────────
+function renderResults(results) {
+  const container = document.getElementById('results');
+  container.innerHTML = '';
+  if (results.length > 1) container.appendChild(buildComparisonPanel(results));
+  results.forEach((r, idx) => container.appendChild(buildCompanyCard(r, idx)));
+  container.classList.remove('hidden');
+}
+
+// ─── Painel de comparação ─────────────────────────────────────────────────────
+function buildComparisonPanel(results) {
+  const metrics = [
+    {label:'Preço',                     fn: r => fmt.$(r.price),                  raw: r => r.price},
+    {label:'Margem de Segurança (Média)',fn: r => fmt.pct1(r.valuation.avg_ms),    raw: r => r.valuation.avg_ms},
+    {label:'EV / EBIT',                 fn: r => fmt.x(r.valuation.ev_ebit),       raw: r => r.valuation.ev_ebit},
+    {label:'ROIC (último)',             fn: r => fmt.pct(r.valuation.roic_last),    raw: r => r.valuation.roic_last},
+    {label:'WACC (último)',             fn: r => fmt.pct(r.valuation.wacc_last),    raw: r => r.valuation.wacc_last},
+    {label:'Spread ROIC−WACC',         fn: r => fmt.pct1(r.valuation.econ_spread), raw: r => r.valuation.econ_spread},
+    {label:'FCF Yield',                 fn: r => fmt.pct(r.valuation.fcf_yield),    raw: r => r.valuation.fcf_yield},
+    {label:'Market Cap',                fn: r => fmt.bn(r.valuation.mktcap),        raw: r => r.valuation.mktcap},
+  ];
+  const cards = metrics.map(m => {
+    const rows = results.map(r =>
+      '<div class="comp-row"><span class="comp-ticker">' + r.ticker + '</span>' +
+      '<span class="comp-val ' + colorClass(m.raw(r)) + '">' + m.fn(r) + '</span></div>'
+    ).join('');
+    return '<div class="comp-metric-card"><div class="comp-metric-title">' + m.label + '</div>' + rows + '</div>';
+  }).join('');
+  const div = document.createElement('div');
+  div.innerHTML = '<div class="company-card"><div class="company-header"><div class="company-title">' +
+    '<span style="font-size:17px;font-weight:700">Comparação</span>' +
+    '<span style="color:var(--text3);font-size:12px">' + results.map(r=>r.ticker).join(' · ') + '</span>' +
+    '</div></div><div style="padding:20px"><div class="comparison-grid">' + cards + '</div></div></div>';
+  return div.firstElementChild;
+}
+
+// ─── Card de empresa ──────────────────────────────────────────────────────────
+function buildCompanyCard(r, idx) {
+  const color = r.color || ['#4f7cff','#22c55e','#f59e0b'][idx % 3];
+  const v     = r.valuation;
+  const card  = document.createElement('div');
+  card.className = 'company-card';
+  const priceDate = r.price_date ? ' <span class="price-date">em ' + fmtDate(r.price_date) + '</span>' : '';
+  card.innerHTML =
+    '<div class="company-header">' +
+      '<div class="company-title">' +
+        '<span class="ticker-badge" style="background:' + color + '">' + r.ticker + '</span>' +
+        '<div><div class="company-name">' + r.name + '</div>' +
+        '<div class="company-meta">' + r.sector + ' · USD</div></div>' +
+      '</div>' +
+      '<div class="company-price">' +
+        '<div class="price-value">' + fmt.$(r.price) + '</div>' +
+        '<div class="price-label">Cotação atual' + priceDate + '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="tabs" id="tabs-' + r.ticker + '">' +
+      '<button class="tab-btn active" onclick="switchTab(\'' + r.ticker + '\',\'valuation\',this)">📊 Valuation</button>' +
+      '<button class="tab-btn" onclick="switchTab(\'' + r.ticker + '\',\'charts\',this)">📈 Gráficos</button>' +
+      '<button class="tab-btn" onclick="switchTab(\'' + r.ticker + '\',\'table\',this)">🗂 Trimestres (' + r.rows.length + ')</button>' +
+      '<button class="tab-btn" onclick="switchTab(\'' + r.ticker + '\',\'glossary\',this)">📖 Glossário</button>' +
+    '</div>' +
+    '<div id="panel-' + r.ticker + '-valuation" class="tab-panel active">' +
+      (v.is_financial ? buildValuationPanelFinancial(r, v) : buildValuationPanel(r, v)) +
+    '</div>' +
+    '<div id="panel-' + r.ticker + '-charts" class="tab-panel">' + buildChartsPanel(r) + '</div>' +
+    '<div id="panel-' + r.ticker + '-table" class="tab-panel">' + buildTablePanel(r) + '</div>' +
+    '<div id="panel-' + r.ticker + '-glossary" class="tab-panel">' + buildGlossaryPanel() + '</div>';
+  return card;
+}
+
+function switchTab(ticker, tab, btnEl) {
+  document.querySelectorAll('#tabs-' + ticker + ' .tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('[id^="panel-' + ticker + '-"]').forEach(p => p.classList.remove('active'));
+  btnEl.classList.add('active');
+  document.getElementById('panel-' + ticker + '-' + tab).classList.add('active');
+  if (tab === 'charts') renderCharts(ticker);
+}
+
 // ─── Utilitários de data ─────────────────────────────────────────────────────
 function fmtDate(d) {
   if (!d) return '';
