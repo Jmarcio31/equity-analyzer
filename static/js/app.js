@@ -19,6 +19,57 @@ function fmtDate(d) {
   return `${day}/${m}/${y}`;
 }
 
+// ─── Definições de tooltip ────────────────────────────────────────────────────
+window.TOOLTIPS = {
+  'ROIC':             'Return on Invested Capital.\n\nFórmula: NOPAT ÷ Capital Investido ex-Goodwill\nNOPAT = EBIT × (1 − Tax Rate efetivo, cap 30%)\n\nExclui goodwill para refletir retorno sobre ativos tangíveis.',
+  'WACC':             'Weighted Average Cost of Capital.\n\nFórmula: Ke × We + Kd × (1−t) × Wd\nKe (custo do equity) = 10% fixo\nKd = Despesa Financeira ÷ Dívida Total',
+  'Spread ROIC−WACC': 'ROIC − WACC. Spread positivo = empresa criando valor econômico acima do custo de capital.',
+  'EP / Ação':        'Economic Profit por ação (TTM).\n\nFórmula: NOPAT − (WACC × Capital Investido ex-Goodwill)',
+  'FCF Yield':        'FCF−SBC ÷ Market Cap.\n\nFCF−SBC = OCF − Capex − Stock-Based Compensation',
+  'EBIT Yield':       'EBIT (TTM) ÷ Enterprise Value. Rendimento operacional implícito.',
+  'EV / EBIT':        'Enterprise Value ÷ EBIT (TTM).\nEV = Market Cap + Dívida − Caixa.\n<15x = barato; >30x = caro (varia por setor).',
+  'FCF/Ação':         'Free Cash Flow − SBC por ação (TTM). OCF − Capex − SBC ÷ Ações.',
+  'EBIT/Ação':        'EBIT por ação nos últimos 12 meses (TTM).',
+  'Receita/Ação':     'Receita total por ação (TTM).',
+  'Div/Ação':         'Dividendos pagos por ação nos últimos 12 meses (TTM).',
+  'Market Cap':       'Preço × Ações em circulação do último trimestre.',
+  'Enterprise Value': 'Market Cap + Dívida Total − Caixa Completo (ST + LT investments).',
+  'Cash Excess/Ação': 'max(Caixa Completo − Dívida Total, 0) ÷ Ações.',
+  'Div Yield':        'Dividendos pagos por ação (TTM) ÷ Preço atual.',
+  'Treasury 10Y':     'Yield do Treasury americano de 10 anos. Taxa livre de risco na Fórmula de Graham.',
+  'ROE':              'Return on Equity — Lucro Líquido TTM ÷ Patrimônio Líquido.',
+  'P/E':              'Preço ÷ Lucro Líquido por ação (TTM).',
+  'P/TBV':            'Preço ÷ Tangible Book Value por ação. TBV = PL − Goodwill.',
+  'EBIT':             'Earnings Before Interest and Taxes — lucro operacional (TTM).',
+  'FCF − SBC':        'Free Cash Flow ajustado por Stock-Based Compensation.\nFórmula: OCF − |Capex| − SBC.',
+  'Economic Profit':  'Lucro Econômico (EVA®).\nFórmula: NOPAT − (WACC × Capital Investido ex-Goodwill).',
+  'Dividendos':       'Dividendos pagos por ação (TTM).',
+  'Margem de Segurança': 'Fórmula de Graham (1974):\nV = EPS × (8,5 + 2×g%) × (4,4÷Y%)\nMS = (V − Preço) ÷ V',
+};
+
+// ─── Fallback seguro para tooltip (evita ReferenceError) ─────────────────────
+function tooltip(key) {
+  const txt = (window.TOOLTIPS || {})[key];
+  if (!txt) return '';
+  const esc = txt.replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
+  return `<span class="info-icon" data-tip="${esc}" onclick="showTooltipModal(this)">ⓘ</span>`;
+}
+
+function showTooltipModal(el) {
+  document.getElementById('tooltip-modal')?.remove();
+  const txt = el.getAttribute('data-tip').replace(/&#10;/g, '\n');
+  const modal = document.createElement('div');
+  modal.id = 'tooltip-modal';
+  modal.className = 'tooltip-modal';
+  modal.innerHTML = `
+    <div class="tooltip-modal-inner">
+      <button class="tooltip-modal-close" onclick="document.getElementById('tooltip-modal').remove()">✕</button>
+      <div class="tooltip-modal-body">${txt.replace(/\n/g,'<br>')}</div>
+    </div>`;
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
 // ─── Gauge SVG ────────────────────────────────────────────────────────────────
 function makeGauge(value, min, max, label, unit='%', thresholds) {
   // thresholds: [{pct: 0.33, color: '#ef4444'}, {pct: 0.66, color: '#f59e0b'}, {pct: 1, color: '#22c55e'}]
