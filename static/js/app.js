@@ -70,6 +70,20 @@ function showTooltipModal(el) {
   document.body.appendChild(modal);
 }
 
+// ─── Utilitário: preço histórico por data ────────────────────────────────────
+// Retorna o preço do price_history mais próximo à data do trimestre
+function priceAtDate(priceHistory, targetDate) {
+  if (!priceHistory || !priceHistory.length) return null;
+  // Ordena por proximidade à data alvo
+  let best = null, bestDiff = Infinity;
+  for (const p of priceHistory) {
+    const diff = Math.abs(new Date(p.date) - new Date(targetDate));
+    if (diff < bestDiff) { bestDiff = diff; best = p.close; }
+  }
+  // Aceita só se estiver dentro de 45 dias
+  return bestDiff <= 45 * 86400000 ? best : null;
+}
+
 // ─── Gauge SVG ────────────────────────────────────────────────────────────────
 function gaugeArc(cx, cy, r, startDeg, endDeg) {
   const rad = d => (d - 90) * Math.PI / 180;
@@ -671,10 +685,17 @@ function renderCharts(ticker) {
     // Book Value e TBV por ação
     const bvSeries  = rows.map(rw => rw.shares ? rw.equity_abs / rw.shares : null);
     const tbvSeries = rows.map(rw => rw.shares ? (rw.equity_abs - (rw.goodwill_abs||0)) / rw.shares : null);
-    // P/TBV e P/E histórico (usando preço atual — limitação: não temos preço histórico trimestral)
-    const price = val.price || r.price;
-    const ptbvSeries = tbvSeries.map(v => v && v > 0 ? price/v : null);
-    const peSeries   = rows.map(rw => rw.net_income_ps && rw.net_income_ps > 0 ? price/rw.net_income_ps : null);
+    // P/TBV e P/E histórico — usa preço histórico do trimestre (cruzando price_history)
+    const priceHist = r.price_history || [];
+    const ptbvSeries = rows.map((rw, i) => {
+      const p = priceAtDate(priceHist, rw.date);
+      const tbv = tbvSeries[i];
+      return (p && tbv && tbv > 0) ? p / tbv : null;
+    });
+    const peSeries = rows.map(rw => {
+      const p = priceAtDate(priceHist, rw.date);
+      return (p && rw.net_income_ps && rw.net_income_ps > 0) ? p / rw.net_income_ps : null;
+    });
     // Eficiência
     const effSeries  = rows.map(rw => rw.opex_rev);
     // Payout
