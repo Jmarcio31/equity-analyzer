@@ -153,7 +153,7 @@ def build_rows(inc_raw, bs_raw, cf_raw, quarters=20):
         rx=np2/icx if icx and icx>1e6 else None
         ep=np2-wacc*icx if icx and icx>1e6 else None
         fcf=ocf-abs(cap)-sbc; os2=ocf-sbc; dp=abs(div); ra=abs(rep)
-        def ps(v): return v/sh if sh else 0
+        def ps(v): return (v/sh if sh else 0) if v is not None else None
         row={"date":ds,"shares":sh,
              "cash_ps":ps(cash),"debt_lease_ps":ps(debt),
              "revenue_ps":ps(rev),"ebit_ps":ps(ebit),
@@ -164,7 +164,7 @@ def build_rows(inc_raw, bs_raw, cf_raw, quarters=20):
              "invested_cap_ps":ps(icx) if icx and icx>1e6 else None,
              "revenue_abs":rev,"ebit_abs":ebit,"nopat_abs":np2,
              "ocf_sbc_abs":os2,"fcf_sbc_abs":fcf,"econ_profit_abs":ep,
-             "invested_cap_abs":ic,"invested_cap_ex_gw_abs":icx,
+             "invested_cap_abs":ic if (ic is not None and abs(ic)>1e6) else None,"invested_cap_ex_gw_abs":icx if (icx is not None and icx>1e6) else None,
              "cash_abs":cash,"total_debt_abs":debt,"equity_abs":eq,
              "goodwill_abs":gw,"total_assets_abs":ta,"net_debt":debt-cash,
              "roic":roic,"roic_ex_gw":rx,"wacc":wacc,"eff_tax":rt,
@@ -178,9 +178,13 @@ def build_rows(inc_raw, bs_raw, cf_raw, quarters=20):
         rows.append(row)
     for i in range(len(rows)):
         if i>=4:
-            dn=rows[i]["nopat_abs"]-rows[i-4]["nopat_abs"]
-            di=rows[i]["invested_cap_abs"]-rows[i-4]["invested_cap_abs"]
-            rows[i]["roiic_1y"]=dn/di if di else None
+            na=rows[i]["nopat_abs"]; nb=rows[i-4]["nopat_abs"]
+            ia2=rows[i]["invested_cap_abs"]; ib=rows[i-4]["invested_cap_abs"]
+            if na is not None and nb is not None and ia2 is not None and ib is not None:
+                dn=na-nb; di=ia2-ib
+                rows[i]["roiic_1y"]=dn/di if di else None
+            else:
+                rows[i]["roiic_1y"]=None
     for f2,o in [("ebit_ps","_ebit_cagr"),("fcf_sbc_ps","_fcf_cagr"),
                  ("econ_profit_ps","_ep_cagr"),("dividend_ps","_div_cagr"),
                  ("revenue_ps","_rev_cagr")]:
