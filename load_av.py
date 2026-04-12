@@ -161,7 +161,7 @@ def build_rows(inc_raw, bs_raw, cf_raw, quarters=20):
              "ocf_sbc_ps":ps(os2),"fcf_sbc_ps":ps(fcf),
              "dividend_ps":ps(dp),"repurchase_ps":ps(ra),
              "cash_returned_ps":ps(dp+ra),"econ_profit_ps":ps(ep),
-             "invested_cap_ps":ps(icx),
+             "invested_cap_ps":ps(icx) if icx and icx>1e6 else None,
              "revenue_abs":rev,"ebit_abs":ebit,"nopat_abs":np2,
              "ocf_sbc_abs":os2,"fcf_sbc_abs":fcf,"econ_profit_abs":ep,
              "invested_cap_abs":ic,"invested_cap_ex_gw_abs":icx,
