@@ -12,11 +12,84 @@ const fmt = {
   bn:   v => v == null ? '—' : '$' + (Math.abs(v) >= 1e12 ? (v/1e12).toFixed(1)+'T' : Math.abs(v) >= 1e9 ? (v/1e9).toFixed(1)+'B' : (v/1e6).toFixed(0)+'M'),
 };
 
-function colorClass(v) {
-  return v == null ? '' : v > 0 ? 'green' : v < 0 ? 'red' : '';
+function colorClass(v) { return v == null ? '' : v > 0 ? 'green' : v < 0 ? 'red' : ''; }
+function fmtDate(d) {
+  if (!d) return '';
+  const [y, m, day] = d.split('-');
+  return `${day}/${m}/${y}`;
 }
 
-// ─── Seleção de cards na landing ─────────────────────────────────────────────
+// ─── Gauge SVG ────────────────────────────────────────────────────────────────
+function makeGauge(value, min, max, label, unit='%', thresholds) {
+  // thresholds: [{pct: 0.33, color: '#ef4444'}, {pct: 0.66, color: '#f59e0b'}, {pct: 1, color: '#22c55e'}]
+  const pct    = Math.max(0, Math.min(1, (value - min) / (max - min)));
+  const angle  = -135 + pct * 270; // -135 a +135 graus
+  const r = 52, cx = 70, cy = 70;
+
+  // Arco de fundo em segmentos coloridos
+  function polarToXY(deg, radius) {
+    const rad = (deg - 90) * Math.PI / 180;
+    return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) };
+  }
+  function arcPath(startDeg, endDeg, r) {
+    const s = polarToXY(startDeg, r);
+    const e = polarToXY(endDeg, r);
+    const large = (endDeg - startDeg) > 180 ? 1 : 0;
+    return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 1 ${e.x} ${e.y}`;
+  }
+
+  const th = thresholds || [
+    {pct: 0.33, color: '#ef4444'},
+    {pct: 0.66, color: '#f59e0b'},
+    {pct: 1.00, color: '#22c55e'},
+  ];
+
+  let arcs = '';
+  let prev = 0;
+  th.forEach(t => {
+    const startDeg = -135 + prev * 270;
+    const endDeg   = -135 + t.pct * 270;
+    arcs += `<path d="${arcPath(startDeg, endDeg, r)}" stroke="${t.color}" stroke-width="10" fill="none" stroke-linecap="butt" opacity="0.85"/>`;
+    prev = t.pct;
+  });
+
+  // Ponteiro
+  const needleRad = (angle - 90) * Math.PI / 180;
+  const nx = cx + 40 * Math.cos(needleRad);
+  const ny = cy + 40 * Math.sin(needleRad);
+
+  // Cor do valor
+  let valColor = '#22c55e';
+  const pctFill = pct;
+  if (pctFill < 0.33) valColor = '#ef4444';
+  else if (pctFill < 0.66) valColor = '#f59e0b';
+
+  const dispVal = unit === '%' ? (value * 100).toFixed(1) + '%'
+                : unit === 'x' ? value.toFixed(1) + 'x'
+                : unit === '$' ? '$' + value.toFixed(2)
+                : value.toFixed(2);
+
+  return `<svg viewBox="0 0 140 100" class="gauge-svg">
+    <!-- Track -->
+    <path d="${arcPath(-135, 135, r)}" stroke="var(--border)" stroke-width="10" fill="none" stroke-linecap="butt"/>
+    <!-- Colored arcs -->
+    ${arcs}
+    <!-- Active fill -->
+    <path d="${arcPath(-135, -135 + pct * 270, r)}" stroke="white" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.3"/>
+    <!-- Needle -->
+    <line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="${cx}" cy="${cy}" r="4" fill="white"/>
+    <!-- Value -->
+    <text x="${cx}" y="${cy + 18}" text-anchor="middle" font-size="14" font-weight="700" fill="${valColor}">${dispVal}</text>
+    <!-- Label -->
+    <text x="${cx}" y="${cy + 30}" text-anchor="middle" font-size="8.5" fill="var(--text3)">${label}</text>
+    <!-- Min/Max -->
+    <text x="16" y="92" text-anchor="middle" font-size="7" fill="var(--text3)">${unit === '%' ? (min*100).toFixed(0)+'%' : min}</text>
+    <text x="124" y="92" text-anchor="middle" font-size="7" fill="var(--text3)">${unit === '%' ? (max*100).toFixed(0)+'%' : max}</text>
+  </svg>`;
+}
+
+// ─── Seleção de cards na landing ──────────────────────────────────────────────
 function toggleTicker(symbol, name, color) {
   const idx  = selectedTickers.findIndex(t => t.symbol === symbol);
   const card = document.getElementById('card-' + symbol);
@@ -43,21 +116,20 @@ function updateSelectionUI() {
   const preview = document.getElementById('selected-preview');
   const btn     = document.getElementById('btn-analyze-main');
   const hChips  = document.getElementById('header-chips');
-  const hSel    = document.getElementById('header-selected');
 
   if (selectedTickers.length === 0) {
     if (preview) preview.innerHTML = '<div class="sidebar-hint">Clique nas ações<br>para selecionar</div>';
-    if (btn)     btn.disabled = true;
+    if (btn) btn.disabled = true;
     return;
   }
   if (preview) {
     preview.innerHTML = selectedTickers.map(t =>
-      '<div class="preview-chip" style="background:' + t.color + '">' + t.symbol + ' — ' + t.name + '</div>'
+      `<div class="preview-chip" style="background:${t.color}">${t.symbol} — ${t.name}</div>`
     ).join('');
   }
-  if (btn)    btn.disabled = false;
+  if (btn) btn.disabled = false;
   if (hChips) hChips.innerHTML = selectedTickers.map(t =>
-    '<div class="header-chip" style="background:' + t.color + '">' + t.symbol + '</div>'
+    `<div class="header-chip" style="background:${t.color}">${t.symbol}</div>`
   ).join('');
 }
 
@@ -86,19 +158,14 @@ async function runAnalysis() {
 
   try {
     const res  = await fetch('/api/analyze', {
-      method:  'POST',
-      headers: {'Content-Type': 'application/json'},
-      body:    JSON.stringify({tickers})
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tickers})
     });
     const data = await res.json();
-
-    if (data.error) {
-      showError(data.error);
-      return;
-    }
+    if (data.error) { showError(data.error); return; }
     if (data.errors && data.errors.length) {
       const eb = document.getElementById('error-box');
-      eb.innerHTML = data.errors.map(e => '<b>' + e.ticker + '</b>: ' + e.error).join('<br>');
+      eb.innerHTML = data.errors.map(e => `<b>${e.ticker}</b>: ${e.error}`).join('<br>');
       eb.classList.remove('hidden');
     }
     if (data.results && data.results.length) {
@@ -107,9 +174,8 @@ async function runAnalysis() {
       if (hSel) hSel.style.display = 'flex';
       renderResults(data.results);
     }
-  } catch(e) {
-    showError('Erro de conexão: ' + e.message);
-  } finally {
+  } catch(e) { showError('Erro de conexão: ' + e.message); }
+  finally {
     document.getElementById('loading').classList.add('hidden');
     if (btnTxt) btnTxt.textContent = 'Analisar';
   }
@@ -117,12 +183,10 @@ async function runAnalysis() {
 
 function showError(msg) {
   const eb = document.getElementById('error-box');
-  eb.textContent = msg;
-  eb.classList.remove('hidden');
+  eb.textContent = msg; eb.classList.remove('hidden');
   document.getElementById('landing').classList.remove('hidden');
 }
 
-// ─── Navegação ────────────────────────────────────────────────────────────────
 function goHome() {
   document.getElementById('results').classList.add('hidden');
   document.getElementById('error-box').classList.add('hidden');
@@ -132,7 +196,6 @@ function goHome() {
   allResults = [];
 }
 
-// ─── Status visual dos cards ──────────────────────────────────────────────────
 async function applyCardStatus() {
   try {
     const r = await fetch('/api/quota-check');
@@ -140,20 +203,14 @@ async function applyCardStatus() {
     d.tickers.forEach(t => {
       const card = document.getElementById('card-' + t.symbol);
       if (!card) return;
-      if (t.has_data) {
-        card.classList.remove('ticker-card--pending');
-        card.classList.add('ticker-card--loaded');
-      } else {
-        card.classList.remove('ticker-card--loaded');
-        card.classList.add('ticker-card--pending');
-      }
+      card.classList.toggle('ticker-card--pending', !t.has_data);
+      card.classList.toggle('ticker-card--loaded', t.has_data);
     });
-  } catch(e) { console.log('Erro ao verificar status:', e); }
+  } catch(e) {}
 }
-
 document.addEventListener('DOMContentLoaded', () => applyCardStatus());
 
-// ─── Render resultados ────────────────────────────────────────────────────────
+// ─── Render ───────────────────────────────────────────────────────────────────
 function renderResults(results) {
   const container = document.getElementById('results');
   container.innerHTML = '';
@@ -165,27 +222,39 @@ function renderResults(results) {
 // ─── Painel de comparação ─────────────────────────────────────────────────────
 function buildComparisonPanel(results) {
   const metrics = [
-    {label:'Preço',                     fn: r => fmt.$(r.price),                  raw: r => r.price},
-    {label:'Margem de Segurança (Média)',fn: r => fmt.pct1(r.valuation.avg_ms),    raw: r => r.valuation.avg_ms},
-    {label:'EV / EBIT',                 fn: r => fmt.x(r.valuation.ev_ebit),       raw: r => r.valuation.ev_ebit},
-    {label:'ROIC (último)',             fn: r => fmt.pct(r.valuation.roic_last),    raw: r => r.valuation.roic_last},
-    {label:'WACC (último)',             fn: r => fmt.pct(r.valuation.wacc_last),    raw: r => r.valuation.wacc_last},
-    {label:'Spread ROIC−WACC',         fn: r => fmt.pct1(r.valuation.econ_spread), raw: r => r.valuation.econ_spread},
-    {label:'FCF Yield',                 fn: r => fmt.pct(r.valuation.fcf_yield),    raw: r => r.valuation.fcf_yield},
-    {label:'Market Cap',                fn: r => fmt.bn(r.valuation.mktcap),        raw: r => r.valuation.mktcap},
+    {label:'Preço',              fn: r => fmt.$(r.price),                  raw: r => r.price},
+    {label:'MS Média',           fn: r => fmt.pct1(r.valuation.avg_ms),    raw: r => r.valuation.avg_ms},
+    {label:'EV / EBIT',          fn: r => fmt.x(r.valuation.ev_ebit),      raw: r => r.valuation.ev_ebit, inv: true},
+    {label:'ROIC',               fn: r => fmt.pct(r.valuation.roic_last),   raw: r => r.valuation.roic_last},
+    {label:'Spread ROIC−WACC',   fn: r => fmt.pct1(r.valuation.econ_spread),raw: r => r.valuation.econ_spread},
+    {label:'FCF Yield',          fn: r => fmt.pct(r.valuation.fcf_yield),   raw: r => r.valuation.fcf_yield},
+    {label:'EBIT Yield',         fn: r => fmt.pct(r.valuation.tir),         raw: r => r.valuation.tir},
+    {label:'Market Cap',         fn: r => fmt.bn(r.valuation.mktcap),       raw: r => r.valuation.mktcap},
   ];
-  const cards = metrics.map(m => {
-    const rows = results.map(r =>
-      '<div class="comp-row"><span class="comp-ticker">' + r.ticker + '</span>' +
-      '<span class="comp-val ' + colorClass(m.raw(r)) + '">' + m.fn(r) + '</span></div>'
-    ).join('');
-    return '<div class="comp-metric-card"><div class="comp-metric-title">' + m.label + '</div>' + rows + '</div>';
+
+  const cols = results.map(r => `<th style="color:${r.color||'#4f7cff'};font-size:15px">${r.ticker}</th>`).join('');
+  const rows = metrics.map(m => {
+    const vals = results.map(r => m.raw(r));
+    const best = m.inv ? Math.min(...vals.filter(v => v != null)) : Math.max(...vals.filter(v => v != null));
+    const cells = results.map(r => {
+      const v = m.raw(r);
+      const isBest = v === best;
+      const cls = colorClass(m.inv ? -v : v);
+      return `<td class="${cls}${isBest ? ' comp-best' : ''}">${m.fn(r)}</td>`;
+    }).join('');
+    return `<tr><td class="comp-label">${m.label}</td>${cells}</tr>`;
   }).join('');
+
   const div = document.createElement('div');
-  div.innerHTML = '<div class="company-card"><div class="company-header"><div class="company-title">' +
-    '<span style="font-size:17px;font-weight:700">Comparação</span>' +
-    '<span style="color:var(--text3);font-size:12px">' + results.map(r=>r.ticker).join(' · ') + '</span>' +
-    '</div></div><div style="padding:20px"><div class="comparison-grid">' + cards + '</div></div></div>';
+  div.innerHTML = `<div class="company-card">
+    <div class="section-header">⚖️ Comparação — ${results.map(r=>r.ticker).join(' · ')}</div>
+    <div style="padding:0 24px 24px">
+      <table class="comp-table">
+        <thead><tr><th></th>${cols}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
   return div.firstElementChild;
 }
 
@@ -195,206 +264,107 @@ function buildCompanyCard(r, idx) {
   const v     = r.valuation;
   const card  = document.createElement('div');
   card.className = 'company-card';
-  const priceDate = r.price_date ? ' <span class="price-date">em ' + fmtDate(r.price_date) + '</span>' : '';
-  card.innerHTML =
-    '<div class="company-header">' +
-      '<div class="company-title">' +
-        '<span class="ticker-badge" style="background:' + color + '">' + r.ticker + '</span>' +
-        '<div><div class="company-name">' + r.name + '</div>' +
-        '<div class="company-meta">' + r.sector + ' · USD</div></div>' +
-      '</div>' +
-      '<div class="company-price">' +
-        '<div class="price-value">' + fmt.$(r.price) + '</div>' +
-        '<div class="price-label">Cotação atual' + priceDate + '</div>' +
-      '</div>' +
-    '</div>' +
-    '<div class="tabs" id="tabs-' + r.ticker + '">' +
-      '<button class="tab-btn active" onclick="switchTab(\'' + r.ticker + '\',\'valuation\',this)">📊 Valuation</button>' +
-      '<button class="tab-btn" onclick="switchTab(\'' + r.ticker + '\',\'charts\',this)">📈 Gráficos</button>' +
-      '<button class="tab-btn" onclick="switchTab(\'' + r.ticker + '\',\'table\',this)">🗂 Trimestres (' + r.rows.length + ')</button>' +
-      '<button class="tab-btn" onclick="switchTab(\'' + r.ticker + '\',\'glossary\',this)">📖 Glossário</button>' +
-    '</div>' +
-    '<div id="panel-' + r.ticker + '-valuation" class="tab-panel active">' +
-      (v.is_financial ? buildValuationPanelFinancial(r, v) : buildValuationPanel(r, v)) +
-    '</div>' +
-    '<div id="panel-' + r.ticker + '-charts" class="tab-panel">' + buildChartsPanel(r) + '</div>' +
-    '<div id="panel-' + r.ticker + '-table" class="tab-panel">' + buildTablePanel(r) + '</div>' +
-    '<div id="panel-' + r.ticker + '-glossary" class="tab-panel">' + buildGlossaryPanel() + '</div>';
+  const priceDate = r.price_date ? `<span class="price-date">em ${fmtDate(r.price_date)}</span>` : '';
+  card.innerHTML = `
+    <div class="company-header">
+      <div class="company-title">
+        <span class="ticker-badge" style="background:${color}">${r.ticker}</span>
+        <div>
+          <div class="company-name">${r.name}</div>
+          <div class="company-meta">${r.sector} · USD</div>
+        </div>
+      </div>
+      <div class="company-price">
+        <div class="price-value">${fmt.$(r.price)}</div>
+        <div class="price-label">Cotação atual ${priceDate}</div>
+      </div>
+    </div>
+    <div class="tabs" id="tabs-${r.ticker}">
+      <button class="tab-btn active" onclick="switchTab('${r.ticker}','valuation',this)">📊 Valuation</button>
+      <button class="tab-btn" onclick="switchTab('${r.ticker}','charts',this)">📈 Gráficos</button>
+      <button class="tab-btn" onclick="switchTab('${r.ticker}','table',this)">🗂 Trimestres (${r.rows.length})</button>
+      <button class="tab-btn" onclick="switchTab('${r.ticker}','glossary',this)">📖 Glossário</button>
+    </div>
+    <div id="panel-${r.ticker}-valuation" class="tab-panel active">${v.is_financial ? buildValuationFinancial(r,v) : buildValuation(r,v,color)}</div>
+    <div id="panel-${r.ticker}-charts"    class="tab-panel">${buildChartsPanel(r)}</div>
+    <div id="panel-${r.ticker}-table"     class="tab-panel">${buildTablePanel(r)}</div>
+    <div id="panel-${r.ticker}-glossary"  class="tab-panel">${buildGlossaryPanel()}</div>`;
   return card;
 }
 
 function switchTab(ticker, tab, btnEl) {
-  document.querySelectorAll('#tabs-' + ticker + ' .tab-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('[id^="panel-' + ticker + '-"]').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll(`#tabs-${ticker} .tab-btn`).forEach(b => b.classList.remove('active'));
+  document.querySelectorAll(`[id^="panel-${ticker}-"]`).forEach(p => p.classList.remove('active'));
   btnEl.classList.add('active');
-  document.getElementById('panel-' + ticker + '-' + tab).classList.add('active');
+  document.getElementById(`panel-${ticker}-${tab}`).classList.add('active');
   if (tab === 'charts') renderCharts(ticker);
 }
 
-// ─── Utilitários de data ─────────────────────────────────────────────────────
-function fmtDate(d) {
-  if (!d) return '';
-  const [y, m, day] = d.split('-');
-  return `${day}/${m}/${y}`;
-}
+// ─── Card Histórico vs Atual ──────────────────────────────────────────────────
+function histCard(label, current, histValues, unit='%', invertColor=false) {
+  const vals = histValues.filter(v => v != null && !isNaN(v));
+  const avg  = vals.length ? vals.reduce((a,b) => a+b, 0) / vals.length : null;
+  const diff = (current != null && avg != null) ? current - avg : null;
+  const isGood = invertColor ? (diff != null && diff < 0) : (diff != null && diff > 0);
+  const isBad  = invertColor ? (diff != null && diff > 0) : (diff != null && diff < 0);
 
-// ─── Definições de tooltip por métrica ───────────────────────────────────────// ─── Painel de valuation para financeiras ────────────────────────────────────
-function buildValuationPanelFinancial(r, v) {
-  const fmt2 = {
-    pct:  x => x == null ? '—' : (x*100).toFixed(1)+'%',
-    x:    x => x == null ? '—' : x.toFixed(1)+'x',
-    $:    x => x == null ? '—' : '$'+x.toFixed(2),
-    bn:   x => x == null ? '—' : (Math.abs(x)>=1e12 ? (x/1e12).toFixed(1)+'T' : Math.abs(x)>=1e9 ? (x/1e9).toFixed(1)+'B' : (x/1e6).toFixed(0)+'M'),
-    pct1: x => x == null ? '—' : (x>=0?'+':'')+(x*100).toFixed(1)+'%',
+  const fmt2 = v => {
+    if (v == null) return '—';
+    if (unit === '%') return (v * 100).toFixed(1) + '%';
+    if (unit === 'x') return v.toFixed(1) + 'x';
+    if (unit === '$') return '$' + v.toFixed(2);
+    return v.toFixed(2);
   };
 
-  const FIN_TOOLTIPS = {
-    'ROE': 'Return on Equity — Lucro Líquido TTM ÷ Patrimônio Líquido.\n\nPrincipal métrica de rentabilidade para bancos, substitui o ROIC.\n\nROE > custo do equity (≈10-12%) = criação de valor para o acionista.',
-    'P/TBV': 'Preço ÷ Tangible Book Value por ação.\n\nTBV = Patrimônio Líquido − Goodwill\n\nMúltiplo fundamental para bancos. P/TBV < 1 pode indicar desconto; > 2 pode indicar prêmio elevado.\n\nBancos que destroem valor tendem a negociar abaixo de 1x TBV.',
-    'P/E': 'Preço ÷ Lucro Líquido por ação (TTM).\n\nPara financeiras, é mais útil que EV/EBIT porque a estrutura de capital é parte do negócio.',
-    'NIM (proxy)': 'Net Interest Margin — Receita Total ÷ Total de Ativos.\n\nProxy aproximado: a API não separa receita de juros líquida com precisão suficiente.\n\nNIM real = (Juros Recebidos − Juros Pagos) ÷ Ativos Rentáveis.',
-    'Eficiência': 'Despesas Operacionais ÷ Receita Total.\n\nQuanto menor, mais eficiente. Bancos bem geridos ficam abaixo de 50%.\n\nBancos brasileiros tipicamente ficam entre 40-55%.',
-    'Payout': 'Dividendos Pagos ÷ Lucro Líquido TTM.\n\nBancos maduros (JPM, ITUB) tendem a ter payouts de 30-50%.\n\nBancos de crescimento (NU) tendem a reter mais capital.',
-    'TBV / Ação': 'Tangible Book Value por ação = (Patrimônio Líquido − Goodwill) ÷ Ações.\n\nRepresenta o valor contábil tangível por ação, base para o P/TBV.',
-    'Total de Ativos': 'Total de ativos do último trimestre. Para bancos, o crescimento de ativos é proxy do crescimento da carteira de crédito.',
-  };
+  const diffStr = diff != null ? (diff >= 0 ? '+' : '') + (unit === '%' ? (diff*100).toFixed(1)+'%' : diff.toFixed(2)) : '';
+  const arrow   = isGood ? '▲' : isBad ? '▼' : '●';
+  const clr     = isGood ? '#22c55e' : isBad ? '#ef4444' : '#94a3b8';
 
-  function tip2(key) {
-    const txt = FIN_TOOLTIPS[key];
-    if (!txt) return '';
-    const escaped = txt.replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
-    return `<span class="info-icon" data-tip="${escaped}" onclick="showTooltipModal(this)">ⓘ</span>`;
-  }
-
-  const cc = x => x == null ? '' : x > 0 ? 'green' : x < 0 ? 'red' : '';
-
-  const kpis = [
-    {label:'Cotação',          value: fmt2.$(v.price)},
-    {label:'P/E',              value: fmt2.x(v.p_e),         cls: ''},
-    {label:'P/TBV',            value: fmt2.x(v.p_tbv),       cls: ''},
-    {label:'ROE',              value: fmt2.pct(v.roe),        cls: cc(v.roe - 0.10)},
-    {label:'NIM (proxy)',      value: fmt2.pct(v.nim_proxy)},
-    {label:'Eficiência',       value: fmt2.pct(v.efficiency), cls: v.efficiency ? (v.efficiency < 0.50 ? 'green' : 'red') : ''},
-    {label:'Payout',           value: fmt2.pct(v.payout)},
-    {label:'Div Yield',        value: fmt2.pct(v.div_yield),  cls: cc(v.div_yield)},
-    {label:'TBV / Ação',       value: fmt2.$(v.tbv_ps)},
-    {label:'BV / Ação',        value: fmt2.$(v.bv_ps)},
-    {label:'Total de Ativos',  value: fmt2.bn(v.total_assets)},
-    {label:'Patrimônio Líq.',  value: fmt2.bn(v.equity_abs)},
-  ];
-
-  const kpiHtml = kpis.map(k => `<div class="val-card">
-    <div class="val-label">${k.label}${tip2(k.label)}</div>
-    <div class="val-value ${k.cls||''}">${k.value}</div>
-    ${k.label === 'Cotação' && r.price_date ? `<div class="val-date">em ${fmtDate(r.price_date)}</div>` : ''}
-  </div>`).join('');
-
-  // Tabela Graham adaptada (EPS e Dividendos)
-  const msRows = [
-    {metric:'EPS (Lucro Líq./Ação)', tip:'P/E', eps: fmt2.$(v.eps_ps),  cagr: fmt2.pct(v.eps_cagr), graham: fmt2.$(v.graham_eps), ms: v.ms_eps},
-    {metric:'Dividendos/Ação',       tip:'Payout', eps: fmt2.$(v.div_ps), cagr: fmt2.pct(v.div_cagr), graham: fmt2.$(v.graham_div), ms: v.ms_div},
-  ].map(row => {
-    const ms = row.ms;
-    const barPct = ms == null ? 0 : Math.min(Math.abs(ms) * 100, 100);
-    const barColor = ms == null ? '#64748b' : (ms >= 0 ? '#22c55e' : '#ef4444');
-    const barStyle = ms != null && ms < 0
-      ? `right:50%;width:${barPct/2}%`
-      : `left:50%;width:${barPct/2}%`;
-    return `<tr>
-      <td><b>${row.metric}</b></td>
-      <td>${row.eps}</td><td>${row.cagr}</td><td>${row.graham}</td>
-      <td class="${cc(ms)}" style="font-weight:600">${ms==null?'—':fmt2.pct1(ms)}</td>
-      <td><div class="ms-bar-bg" style="position:relative">
-        <div class="ms-bar-fill" style="${barStyle};background:${barColor};position:absolute;top:0;height:100%"></div>
-        <div style="position:absolute;top:0;left:50%;width:1px;height:100%;background:var(--border)"></div>
-      </div></td>
-    </tr>`;
-  }).join('');
-
-  return `
-    <div class="fin-notice">
-      ⚠️ <b>Instituição Financeira</b> — framework adaptado (Damodaran). ROIC/EVA/FCF não aplicáveis.
-      Métricas: ROE · P/TBV · NIM · Eficiência · Payout.
+  return `<div class="hist-card">
+    <div class="hist-label">${label}</div>
+    <div class="hist-row">
+      <div class="hist-block">
+        <div class="hist-val">${fmt2(current)}</div>
+        <div class="hist-sub">Atual</div>
+      </div>
+      <div class="hist-arrow" style="color:${clr}">${arrow}<br><span style="font-size:10px">${diffStr}</span></div>
+      <div class="hist-block">
+        <div class="hist-val hist-muted">${fmt2(avg)}</div>
+        <div class="hist-sub">Histórico</div>
+      </div>
     </div>
-    <div class="valuation-grid">${kpiHtml}</div>
-    <h3 style="margin-bottom:10px;font-size:15px;color:var(--text);font-weight:600">Margem de Segurança — Fórmula de Graham (adaptada)</h3>
-    <p style="font-size:13px;color:var(--text2);margin-bottom:14px">
-      V = EPS × (8,5 + 2 × CAGR%) × 4,4 / Y &nbsp;·&nbsp; EPS = Lucro Líquido/Ação &nbsp;·&nbsp; CAGR = crescimento de receita (proxy)
-    </p>
-    <div class="ms-table-wrap"><table class="ms-table">
-      <thead><tr><th>Métrica</th><th>Valor/Ação TTM</th><th>CAGR</th><th>Graham (V)</th><th>Margem de Segurança</th><th></th></tr></thead>
-      <tbody>${msRows}</tbody>
-      <tfoot><tr style="font-weight:700;border-top:2px solid var(--border)">
-        <td colspan="4" style="text-align:right;padding-right:14px">Média (EPS + Div)</td>
-        <td class="${cc(v.avg_ms)}" style="font-size:15px">${v.avg_ms==null?'—':((v.avg_ms>=0?'+':'')+(v.avg_ms*100).toFixed(1)+'%')}</td><td></td>
-      </tr></tfoot>
-    </table></div>`;
+  </div>`;
 }
 
+// ─── Aba Valuation (não-financeiras) ─────────────────────────────────────────
+function buildValuation(r, v, color) {
+  const rows = r.rows;
 
-const TOOLTIPS = {
-  'Cotação': 'Última cotação registrada no banco de dados.\nData indicada abaixo do valor.\n\nAtualização automática: dias úteis via GitHub Actions.',
-  'EV / EBIT': 'Enterprise Value dividido pelo EBIT (TTM). Mede quanto o mercado paga pelo lucro operacional. <15x = barato; >30x = caro (regra geral, varia por setor).',
-  'Market Cap': 'Preço × Ações em circulação do último trimestre disponível.',
-  'Enterprise Value': 'Market Cap + Dívida Total − Caixa Completo (ST + LT investments). Representa o valor total da empresa para um comprador.',
-  'ROIC (último trim.)': 'Return on Invested Capital.\n\nFórmula: NOPAT ÷ Capital Investido ex-Goodwill\n\nNOPAT = EBIT × (1 − Tax Rate efetivo, cap 30%)\nCapital Investido ex-GW = NWC + PP&E + Intangíveis\n\nExclui goodwill do denominador para refletir o retorno sobre ativos tangíveis.\n\nHorizonte: último trimestre (anualizado via TTM).',
-  'WACC (último trim.)': 'Weighted Average Cost of Capital.\n\nFórmula: Ke × We + Kd × (1−t) × Wd\n\nKe (custo do equity) = 10% fixo\nKd (custo da dívida) = Despesa Financeira ÷ Dívida Total\nPonderação: estrutura de capital do último trimestre.',
-  'Spread ROIC−WACC': 'ROIC − WACC. Spread positivo = empresa criando valor econômico; negativo = destruindo valor mesmo com lucro contábil positivo.\n\nÉ o principal indicador de qualidade do negócio neste framework.',
-  'Treasury Yield (10Y)': 'Taxa do Treasury americano de 10 anos.\n\n1. Taxa livre de risco na Fórmula de Graham (denominador Y%)\n2. Referência para o WACC\n\nFonte: Alpha Vantage, atualizada periodicamente.',
-  'Cash Excess / Ação': 'Caixa excedente por ação.\n\nFórmula: max(Caixa Completo − Dívida Total, 0) ÷ Ações\nCaixa Completo = Cash & ST Investments + LT Investments.',
-  'FCF Yield': 'FCF−SBC ÷ Market Cap.\n\nFCF−SBC = Fluxo de Caixa Operacional − Capex − Stock-Based Compensation.\n\nÉ o free cash flow to equity ajustado pelo SBC.',
-  'EBIT Yield (TIR)': 'EBIT (TTM) ÷ Enterprise Value. Equivale ao inverso do EV/EBIT.\n\nSe você comprasse a empresa inteira, qual seria o rendimento anual sobre o preço pago.',
-  'Div Yield': 'Dividendos pagos por ação (TTM) ÷ Preço atual.',
-  'EBIT': 'Earnings Before Interest and Taxes — lucro operacional.\n\nFonte: operatingIncome da API (TTM = soma dos últimos 4 trimestres).\n\nUsado na Fórmula de Graham como proxy do poder de lucro operacional.',
-  'FCF − SBC': 'Free Cash Flow ajustado por Stock-Based Compensation.\n\nFórmula: OCF − |Capex| − SBC\n\nÉ o FCFE implícito. O SBC é deduzido porque dilui o acionista.\nNão é FCFF.',
-  'Economic Profit': 'Lucro Econômico (equivalente ao EVA®).\n\nFórmula: NOPAT − (WACC × Capital Investido ex-Goodwill)\n\nEP > 0 = empresa gerando retorno acima do custo de capital.',
-  'Dividendos': 'Dividendos pagos por ação nos últimos 12 meses (TTM).\n\nFonte: dividendsPaid do Cash Flow Statement.',
-  'Margem de Segurança': 'Fórmula de Graham (revisão 1974):\n\nV = EPS × (8,5 + 2 × g%) × (4,4 ÷ Y%)\n\nEPS = métrica por ação (EBIT, FCF, EP ou Div)\n8,5 = múltiplo base para crescimento zero\ng% = CAGR histórico de 5 anos (ou 3 se indisponível)\n4,4 = yield do AAA bond na época de Graham\nY% = Treasury 10Y atual\n\nMS = (V − Preço) ÷ V',
-};
+  // Séries históricas para cada métrica
+  const roicSeries  = rows.map(rw => rw.roic);
+  const waccSeries  = rows.map(rw => rw.wacc);
+  const spreadSeries= rows.map(rw => rw.roic - rw.wacc);
+  const fcfSeries   = rows.map(rw => rw.fcf_sbc_ps);
+  const ebitSeries  = rows.map(rw => rw.ebit_ps);
+  const epSeries    = rows.map(rw => rw.econ_profit_ps);
+  const divSeries   = rows.map(rw => rw.dividend_ps);
+  const revSeries   = rows.map(rw => rw.revenue_ps);
 
-function tooltip(key) {
-  const txt = TOOLTIPS[key];
-  if (!txt) return '';
-  const escaped = txt.replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
-  return `<span class="info-icon" data-tip="${escaped}" onclick="showTooltipModal(this)">ⓘ</span>`;
-}
+  // Gauges — thresholds para cada métrica
+  const roicGauge  = makeGauge(v.roic_last,  0, 0.5, 'ROIC', '%');
+  const waccGauge  = makeGauge(v.wacc_last,  0, 0.2, 'WACC', '%', [
+    {pct:0.33, color:'#22c55e'},{pct:0.66, color:'#f59e0b'},{pct:1, color:'#ef4444'}
+  ]);
+  const spreadGauge = makeGauge(v.econ_spread, -0.1, 0.5, 'Spread', '%', [
+    {pct:0.17, color:'#ef4444'},{pct:0.33, color:'#f59e0b'},{pct:1, color:'#22c55e'}
+  ]);
+  const fcfGauge   = makeGauge(v.fcf_yield,  0, 0.06, 'FCF Yield', '%');
+  const ebitGauge  = makeGauge(v.tir,        0, 0.08, 'EBIT Yield', '%');
+  const evGauge    = makeGauge(Math.min(v.ev_ebit||50, 50), 0, 50, 'EV/EBIT', 'x', [
+    {pct:0.3, color:'#22c55e'},{pct:0.6, color:'#f59e0b'},{pct:1, color:'#ef4444'}
+  ]);
 
-function showTooltipModal(el) {
-  document.getElementById('tooltip-modal')?.remove();
-  const txt = el.getAttribute('data-tip').replace(/&#10;/g, '\n');
-  const modal = document.createElement('div');
-  modal.id = 'tooltip-modal';
-  modal.className = 'tooltip-modal';
-  modal.innerHTML = `
-    <div class="tooltip-modal-inner">
-      <button class="tooltip-modal-close" onclick="document.getElementById('tooltip-modal').remove()">✕</button>
-      <div class="tooltip-modal-body">${txt.replace(/\n/g,'<br>')}</div>
-    </div>`;
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-  document.body.appendChild(modal);
-}
-
-function buildValuationPanel(r, v) {
-  const kpis = [
-    {label:'Cotação',           value: fmt.$(r.price)},
-    {label:'EV / EBIT',         value: fmt.x(v.ev_ebit)},
-    {label:'Market Cap',        value: fmt.bn(v.mktcap)},
-    {label:'Enterprise Value',  value: fmt.bn(v.ev)},
-    {label:'ROIC (último trim.)',value: fmt.pct(v.roic_last),  cls: colorClass(v.roic_last - v.wacc_last)},
-    {label:'WACC (último trim.)',value: fmt.pct(v.wacc_last)},
-    {label:'Spread ROIC−WACC',  value: fmt.pct1(v.econ_spread), cls: colorClass(v.econ_spread)},
-    {label:'Treasury Yield (10Y)',value: fmt.pct(v.treasury_yield)},
-    {label:'Cash Excess / Ação', value: fmt.$(v.cash_excess_ps)},
-    {label:'FCF Yield',          value: fmt.pct(v.fcf_yield), cls: colorClass(v.fcf_yield)},
-    {label:'EBIT Yield (TIR)',   value: fmt.pct(v.tir),       cls: colorClass(v.tir)},
-    {label:'Div Yield',          value: fmt.pct(v.div_yield)},
-  ];
-  const kpiHtml = kpis.map(k => `<div class="val-card">
-    <div class="val-label">${k.label}${tooltip(k.label)}</div>
-    <div class="val-value ${k.cls||''}">${k.value}</div>
-    ${k.label === 'Cotação' && r.price_date ? `<div class="val-date">em ${fmtDate(r.price_date)}</div>` : ''}
-  </div>`).join('');
-
+  // Graham table
   const msRows = [
     {metric:'EBIT',           tip:'EBIT',            eps: fmt.$(v.ebit_ps), cagr: fmt.pct(v.ebit_cagr), graham: fmt.$(v.graham_ebit), ms: v.ms_ebit},
     {metric:'FCF − SBC',      tip:'FCF − SBC',        eps: fmt.$(v.fcf_ps),  cagr: fmt.pct(v.fcf_cagr),  graham: fmt.$(v.graham_fcf),  ms: v.ms_fcf},
@@ -403,36 +373,178 @@ function buildValuationPanel(r, v) {
   ].map(row => {
     const ms = row.ms;
     const barPct = ms == null ? 0 : Math.min(Math.abs(ms) * 100, 100);
-    const barColor = ms == null ? '#64748b' : (ms >= 0 ? '#22c55e' : '#ef4444');
-    const barStyle = ms != null && ms < 0
-      ? `right:50%;width:${barPct/2}%`
-      : `left:50%;width:${barPct/2}%`;
+    const barColor = ms == null ? '#64748b' : ms >= 0 ? '#22c55e' : '#ef4444';
+    const barStyle = ms != null && ms < 0 ? `right:50%;width:${barPct/2}%` : `left:50%;width:${barPct/2}%`;
     return `<tr>
-      <td><b>${row.metric}</b>${tooltip(row.tip||row.metric)}</td>
+      <td><b>${row.metric}</b></td>
       <td>${row.eps}</td><td>${row.cagr}</td><td>${row.graham}</td>
       <td class="${colorClass(ms)}" style="font-weight:600">${ms==null?'—':fmt.pct1(ms)}</td>
       <td><div class="ms-bar-bg" style="position:relative">
         <div class="ms-bar-fill" style="${barStyle};background:${barColor};position:absolute;top:0;height:100%"></div>
         <div style="position:absolute;top:0;left:50%;width:1px;height:100%;background:var(--border)"></div>
-      </div></td>
-    </tr>`;
+      </div></td></tr>`;
   }).join('');
 
   return `
-    <div class="valuation-grid">${kpiHtml}</div>
-    <h3 style="margin-bottom:10px;font-size:15px;color:var(--text);font-weight:600">Margem de Segurança — Fórmula de Graham</h3>
-    <p style="font-size:13px;color:var(--text2);margin-bottom:14px">V = EPS × (8,5 + 2 × CAGR%) × 4,4 / Y &nbsp;·&nbsp; MS = (V − Preço) / V</p>
+  <!-- SEÇÃO 1: Qualidade do Negócio -->
+  <div class="section-header">🏆 Qualidade do Negócio</div>
+  <div class="section-body">
+    <div class="gauge-row">
+      <div class="gauge-card">
+        <div class="gauge-title">ROIC</div>
+        ${roicGauge}
+        <div class="gauge-note">Return on Invested Capital</div>
+      </div>
+      <div class="gauge-card">
+        <div class="gauge-title">WACC</div>
+        ${waccGauge}
+        <div class="gauge-note">Custo médio de capital</div>
+      </div>
+      <div class="gauge-card">
+        <div class="gauge-title">Spread ROIC−WACC</div>
+        ${spreadGauge}
+        <div class="gauge-note">Criação de valor econômico</div>
+      </div>
+    </div>
+    <div class="hist-row-grid">
+      ${histCard('ROIC', v.roic_last, roicSeries, '%')}
+      ${histCard('WACC', v.wacc_last, waccSeries, '%', true)}
+      ${histCard('Spread', v.econ_spread, spreadSeries, '%')}
+      ${histCard('EP / Ação', v.ep_ps, epSeries, '$')}
+    </div>
+  </div>
+
+  <!-- SEÇÃO 2: Geração de Caixa e Valuation -->
+  <div class="section-header">💰 Geração de Caixa & Valuation</div>
+  <div class="section-body">
+    <div class="gauge-row">
+      <div class="gauge-card">
+        <div class="gauge-title">FCF Yield</div>
+        ${fcfGauge}
+        <div class="gauge-note">FCF−SBC ÷ Market Cap</div>
+      </div>
+      <div class="gauge-card">
+        <div class="gauge-title">EBIT Yield</div>
+        ${ebitGauge}
+        <div class="gauge-note">EBIT ÷ Enterprise Value</div>
+      </div>
+      <div class="gauge-card">
+        <div class="gauge-title">EV / EBIT</div>
+        ${evGauge}
+        <div class="gauge-note">Múltiplo de valuation</div>
+      </div>
+    </div>
+    <div class="kpi-strip">
+      <div class="kpi-pill">
+        <span class="kpi-pill-label">Market Cap</span>
+        <span class="kpi-pill-val">${fmt.bn(v.mktcap)}</span>
+      </div>
+      <div class="kpi-pill">
+        <span class="kpi-pill-label">Enterprise Value</span>
+        <span class="kpi-pill-val">${fmt.bn(v.ev)}</span>
+      </div>
+      <div class="kpi-pill">
+        <span class="kpi-pill-label">Cash Excess/Ação</span>
+        <span class="kpi-pill-val ${colorClass(v.cash_excess_ps)}">${fmt.$(v.cash_excess_ps)}</span>
+      </div>
+      <div class="kpi-pill">
+        <span class="kpi-pill-label">Div Yield</span>
+        <span class="kpi-pill-val">${fmt.pct(v.div_yield)}</span>
+      </div>
+      <div class="kpi-pill">
+        <span class="kpi-pill-label">Treasury 10Y</span>
+        <span class="kpi-pill-val">${fmt.pct(v.treasury_yield)}</span>
+      </div>
+    </div>
+    <div class="hist-row-grid">
+      ${histCard('FCF/Ação', v.fcf_ps, fcfSeries, '$')}
+      ${histCard('EBIT/Ação', v.ebit_ps, ebitSeries, '$')}
+      ${histCard('Receita/Ação', rows[rows.length-1]?.revenue_ps, revSeries, '$')}
+      ${histCard('Div/Ação', v.div_ps, divSeries, '$')}
+    </div>
+  </div>
+
+  <!-- SEÇÃO 3: Margem de Segurança -->
+  <div class="section-header">🎯 Margem de Segurança — Fórmula de Graham</div>
+  <div class="section-body">
+    <p style="font-size:13px;color:var(--text2);margin-bottom:14px">
+      V = EPS × (8,5 + 2 × CAGR%) × 4,4 / Y &nbsp;·&nbsp; MS = (V − Preço) / V
+      &nbsp;·&nbsp; Treasury 10Y: ${fmt.pct(v.treasury_yield)} &nbsp;·&nbsp; Preço: ${fmt.$(v.price)}
+    </p>
     <div class="ms-table-wrap"><table class="ms-table">
-      <thead><tr><th>Métrica</th><th>EPS/Ação TTM${tooltip('EBIT')}</th><th>CAGR</th><th>Graham (V)${tooltip('Margem de Segurança')}</th><th>Margem de Segurança</th><th></th></tr></thead>
+      <thead><tr>
+        <th>Métrica</th><th>EPS/Ação TTM</th><th>CAGR</th>
+        <th>Graham (V)</th><th>Margem de Segurança</th><th></th>
+      </tr></thead>
       <tbody>${msRows}</tbody>
       <tfoot><tr style="font-weight:700;border-top:2px solid var(--border)">
         <td colspan="4" style="text-align:right;padding-right:14px">Média (FCF + EP + Div)</td>
-        <td class="${colorClass(v.avg_ms)}" style="font-size:15px">${fmt.pct1(v.avg_ms)}</td><td></td>
+        <td class="${colorClass(v.avg_ms)}" style="font-size:16px">${fmt.pct1(v.avg_ms)}</td><td></td>
       </tr></tfoot>
-    </table></div>`;
+    </table></div>
+  </div>`;
 }
 
-// ─── Charts Panel ─────────────────────────────────────────────────────────────
+// ─── Aba Valuation Financeiras ─────────────────────────────────────────────
+function buildValuationFinancial(r, v) {
+  const rows = r.rows;
+  const roeSeries = rows.map(rw => rw.net_income_ps && rw.invested_cap_ps ? rw.net_income_ps / (rw.equity_abs / rw.shares) : null);
+  const roeGauge = makeGauge(v.roe || 0, 0, 0.35, 'ROE', '%');
+  const peGauge  = makeGauge(Math.min(v.p_e || 30, 40), 0, 40, 'P/E', 'x', [
+    {pct:0.375, color:'#22c55e'},{pct:0.625, color:'#f59e0b'},{pct:1, color:'#ef4444'}
+  ]);
+  const ptbvGauge = makeGauge(Math.min(v.p_tbv || 2, 4), 0, 4, 'P/TBV', 'x', [
+    {pct:0.25, color:'#22c55e'},{pct:0.5, color:'#f59e0b'},{pct:1, color:'#ef4444'}
+  ]);
+
+  return `
+  <div class="fin-notice">⚠️ <b>Instituição Financeira</b> — framework adaptado (Damodaran). ROIC/EVA/FCF não aplicáveis.</div>
+
+  <div class="section-header">🏦 Rentabilidade</div>
+  <div class="section-body">
+    <div class="gauge-row">
+      <div class="gauge-card"><div class="gauge-title">ROE</div>${roeGauge}<div class="gauge-note">Return on Equity</div></div>
+      <div class="gauge-card"><div class="gauge-title">P/E</div>${peGauge}<div class="gauge-note">Preço ÷ Lucro/Ação</div></div>
+      <div class="gauge-card"><div class="gauge-title">P/TBV</div>${ptbvGauge}<div class="gauge-note">Preço ÷ Tangible BV</div></div>
+    </div>
+    <div class="kpi-strip">
+      <div class="kpi-pill"><span class="kpi-pill-label">TBV/Ação</span><span class="kpi-pill-val">${fmt.$(v.tbv_ps)}</span></div>
+      <div class="kpi-pill"><span class="kpi-pill-label">BV/Ação</span><span class="kpi-pill-val">${fmt.$(v.bv_ps)}</span></div>
+      <div class="kpi-pill"><span class="kpi-pill-label">Eficiência</span><span class="kpi-pill-val ${v.efficiency < 0.5 ? 'green' : 'red'}">${fmt.pct(v.efficiency)}</span></div>
+      <div class="kpi-pill"><span class="kpi-pill-label">NIM (proxy)</span><span class="kpi-pill-val">${fmt.pct(v.nim_proxy)}</span></div>
+      <div class="kpi-pill"><span class="kpi-pill-label">Payout</span><span class="kpi-pill-val">${fmt.pct(v.payout)}</span></div>
+      <div class="kpi-pill"><span class="kpi-pill-label">Div Yield</span><span class="kpi-pill-val">${fmt.pct(v.div_yield)}</span></div>
+      <div class="kpi-pill"><span class="kpi-pill-label">Total Ativos</span><span class="kpi-pill-val">${fmt.bn(v.total_assets)}</span></div>
+      <div class="kpi-pill"><span class="kpi-pill-label">PL</span><span class="kpi-pill-val">${fmt.bn(v.equity_abs)}</span></div>
+    </div>
+  </div>
+
+  <div class="section-header">🎯 Graham (adaptado)</div>
+  <div class="section-body">
+    <p style="font-size:13px;color:var(--text2);margin-bottom:14px">EPS = Lucro Líquido/Ação · CAGR = crescimento de receita (proxy)</p>
+    <div class="ms-table-wrap"><table class="ms-table">
+      <thead><tr><th>Métrica</th><th>Valor/Ação TTM</th><th>CAGR</th><th>Graham (V)</th><th>Margem de Segurança</th><th></th></tr></thead>
+      <tbody>
+        ${[{m:'EPS', eps:fmt.$(v.eps_ps), cagr:fmt.pct(v.eps_cagr), graham:fmt.$(v.graham_eps), ms:v.ms_eps},
+           {m:'Dividendos', eps:fmt.$(v.div_ps), cagr:fmt.pct(v.div_cagr), graham:fmt.$(v.graham_div), ms:v.ms_div}
+          ].map(row => {
+            const ms = row.ms;
+            const barPct = ms == null ? 0 : Math.min(Math.abs(ms)*100, 100);
+            const barColor = ms == null ? '#64748b' : ms >= 0 ? '#22c55e' : '#ef4444';
+            const barStyle = ms != null && ms < 0 ? `right:50%;width:${barPct/2}%` : `left:50%;width:${barPct/2}%`;
+            return `<tr><td><b>${row.m}</b></td><td>${row.eps}</td><td>${row.cagr}</td><td>${row.graham}</td>
+              <td class="${colorClass(ms)}" style="font-weight:600">${ms==null?'—':fmt.pct1(ms)}</td>
+              <td><div class="ms-bar-bg" style="position:relative">
+                <div class="ms-bar-fill" style="${barStyle};background:${barColor};position:absolute;top:0;height:100%"></div>
+                <div style="position:absolute;top:0;left:50%;width:1px;height:100%;background:var(--border)"></div>
+              </div></td></tr>`;
+          }).join('')}
+      </tbody>
+    </table></div>
+  </div>`;
+}
+
+// ─── Aba Gráficos ─────────────────────────────────────────────────────────────
 function buildChartsPanel(r) {
   const id = r.ticker;
   return `
@@ -441,7 +553,7 @@ function buildChartsPanel(r) {
         <div class="chart-title">📈 Preço × Métricas Fundamentalistas</div>
         <div class="chart-toggles" id="tog-${id}">
           <label class="tog-btn tog-active" data-metric="ebit"><span class="tog-dot" style="background:#4f7cff"></span>EBIT/ação</label>
-          <label class="tog-btn tog-active" data-metric="ep"><span class="tog-dot" style="background:#a78bfa"></span>Eco. Profit/ação</label>
+          <label class="tog-btn tog-active" data-metric="ep"><span class="tog-dot" style="background:#a78bfa"></span>Eco.Profit/ação</label>
           <label class="tog-btn tog-active" data-metric="fcf"><span class="tog-dot" style="background:#22c55e"></span>FCF-SBC/ação</label>
           <label class="tog-btn" data-metric="graham_ebit"><span class="tog-dot" style="background:#f59e0b"></span>Graham EBIT</label>
           <label class="tog-btn" data-metric="graham_ep"><span class="tog-dot" style="background:#fb923c"></span>Graham EP</label>
@@ -462,40 +574,43 @@ function buildChartsPanel(r) {
 function renderCharts(ticker) {
   const r = allResults.find(x => x.ticker === ticker);
   if (!r) return;
-  const color = r.color || ['#4f7cff','#22c55e','#f59e0b'][allResults.indexOf(r) % 3];
+  const color  = r.color || ['#4f7cff','#22c55e','#f59e0b'][allResults.indexOf(r) % 3];
   const rows   = r.rows;
   const labels = rows.map(rw => rw.date.slice(0,7));
+  const val    = r.valuation;
 
   function makeChart(id, datasets, pct=false) {
     const canvas = document.getElementById(id);
     if (!canvas) return;
     if (chartInstances[id]) chartInstances[id].destroy();
     chartInstances[id] = new Chart(canvas, {
-      type: 'line',
-      data: {labels, datasets},
+      type: 'line', data: {labels, datasets},
       options: {
         responsive: true, maintainAspectRatio: true,
-        plugins: {legend: {display: datasets.length > 1, labels: {color:'#94a3b8',font:{size:10}}}, tooltip: {mode:'index',intersect:false}},
+        plugins: {
+          legend: {display: datasets.length > 1, labels: {color:'#94a3b8', font:{size:10}}},
+          tooltip: {mode:'index', intersect:false}
+        },
         scales: {
-          x: {ticks: {color:'#64748b',maxTicksLimit:8,font:{size:9}}, grid: {color:'#2d3150'}},
-          y: {ticks: {color:'#64748b',font:{size:9}, callback: v => pct ? (v*100).toFixed(0)+'%' : '$'+v.toFixed(1)}, grid: {color:'#2d3150'}}
+          x: {ticks: {color:'#64748b', maxTicksLimit:8, font:{size:9}}, grid: {color:'#2d3150'}},
+          y: {ticks: {color:'#64748b', font:{size:9}, callback: v => pct ? (v*100).toFixed(0)+'%' : '$'+v.toFixed(1)}, grid: {color:'#2d3150'}}
         }
       }
     });
   }
-  const ds = (label, data, col, fill=false) => ({label, data, borderColor: col, backgroundColor: fill ? col+'22':'transparent', borderWidth:2, pointRadius:0, tension:0.3, fill});
+  const ds = (label, data, col, fill=false) => ({
+    label, data, borderColor: col, backgroundColor: fill ? col+'22':'transparent',
+    borderWidth:2, pointRadius:0, tension:0.3, fill
+  });
 
-  makeChart(`ch-ebit-${ticker}`, [ds('EBIT/ação', rows.map(r=>r.ebit_ps), color, true)]);
-  makeChart(`ch-fcf-${ticker}`,  [ds('FCF-SBC/ação', rows.map(r=>r.fcf_sbc_ps), '#22c55e', true)]);
-  makeChart(`ch-ep-${ticker}`,   [ds('Eco.Profit/ação', rows.map(r=>r.econ_profit_ps), '#a78bfa', true)]);
-  makeChart(`ch-roic-${ticker}`, [ds('ROIC', rows.map(r=>r.roic), color), ds('WACC', rows.map(r=>r.wacc), '#ef4444')], true);
-  makeChart(`ch-rev-${ticker}`,  [ds('Receita/ação', rows.map(r=>r.revenue_ps), '#f59e0b', true)]);
-  makeChart(`ch-lev-${ticker}`,  [ds('Net Debt/FCF', rows.map(r=>r.net_debt_fcf), '#f87171')]);
-
-  // ── Gráfico combinado: Preço × Métricas ──────────────────────────────
+  makeChart(`ch-ebit-${ticker}`,  [ds('EBIT/ação', rows.map(r=>r.ebit_ps), color, true)]);
+  makeChart(`ch-fcf-${ticker}`,   [ds('FCF-SBC/ação', rows.map(r=>r.fcf_sbc_ps), '#22c55e', true)]);
+  makeChart(`ch-ep-${ticker}`,    [ds('Eco.Profit/ação', rows.map(r=>r.econ_profit_ps), '#a78bfa', true)]);
+  makeChart(`ch-roic-${ticker}`,  [ds('ROIC', rows.map(r=>r.roic), color), ds('WACC', rows.map(r=>r.wacc), '#ef4444')], true);
+  makeChart(`ch-rev-${ticker}`,   [ds('Receita/ação', rows.map(r=>r.revenue_ps), '#f59e0b', true)]);
+  makeChart(`ch-lev-${ticker}`,   [ds('Net Debt/FCF', rows.map(r=>r.net_debt_fcf), '#f87171')]);
   renderPriceChart(ticker, r, color);
 
-  // Toggle handlers
   const togArea = document.getElementById(`tog-${ticker}`);
   if (togArea) {
     togArea.querySelectorAll('.tog-btn').forEach(btn => {
@@ -510,134 +625,79 @@ function renderCharts(ticker) {
 function renderPriceChart(ticker, r, color) {
   const canvas = document.getElementById(`ch-price-${ticker}`);
   if (!canvas) return;
-
   const priceHist = r.price_history || [];
-  const rows      = r.rows;
-  const val       = r.valuation;
+  const rows = r.rows;
+  const val  = r.valuation;
 
-  // Preço diário
-  const priceDates  = priceHist.map(p => p.date);
-  const priceValues = priceHist.map(p => p.close);
-
-  // Métricas trimestrais — alinhadas à data do trimestre
-  const qDates = rows.map(rw => rw.date);
   const metricMap = {
-    ebit:        { label: 'EBIT/ação',       color: '#4f7cff', data: rows.map(r=>r.ebit_ps) },
-    ep:          { label: 'Eco.Profit/ação', color: '#a78bfa', data: rows.map(r=>r.econ_profit_ps) },
-    fcf:         { label: 'FCF-SBC/ação',    color: '#22c55e', data: rows.map(r=>r.fcf_sbc_ps) },
-    graham_ebit: { label: 'Graham (EBIT)',   color: '#f59e0b', data: rows.map(r => {
-      const cagr = r._ebit_cagr != null ? r._ebit_cagr * 100 : (val.ebit_cagr||0)*100;
-      const y    = val.treasury_yield * 100 || 4.28;
-      return r.ebit_ps > 0 ? r.ebit_ps * (8.5 + 2*cagr) * 4.4/y : null;
+    ebit:        {label:'EBIT/ação',       color:'#4f7cff', data: rows.map(r=>r.ebit_ps)},
+    ep:          {label:'Eco.Profit/ação', color:'#a78bfa', data: rows.map(r=>r.econ_profit_ps)},
+    fcf:         {label:'FCF-SBC/ação',    color:'#22c55e', data: rows.map(r=>r.fcf_sbc_ps)},
+    graham_ebit: {label:'Graham(EBIT)',    color:'#f59e0b', data: rows.map(r => {
+      const cagr = (val.ebit_cagr||0)*100;
+      const y = val.treasury_yield*100||4.28;
+      return r.ebit_ps > 0 ? r.ebit_ps*(8.5+2*cagr)*4.4/y : null;
     })},
-    graham_ep:   { label: 'Graham (EP)',     color: '#fb923c', data: rows.map(r => {
+    graham_ep: {label:'Graham(EP)', color:'#fb923c', data: rows.map(r => {
       const cagr = (val.ep_cagr||0)*100;
-      const y    = val.treasury_yield * 100 || 4.28;
-      return r.econ_profit_ps > 0 ? r.econ_profit_ps * (8.5 + 2*cagr) * 4.4/y : null;
+      const y = val.treasury_yield*100||4.28;
+      return r.econ_profit_ps > 0 ? r.econ_profit_ps*(8.5+2*cagr)*4.4/y : null;
     })},
   };
 
-  // Quais métricas estão ativas
-  const togArea  = document.getElementById(`tog-${ticker}`);
-  const active   = new Set();
+  const togArea = document.getElementById(`tog-${ticker}`);
+  const active  = new Set();
   if (togArea) togArea.querySelectorAll('.tog-btn.tog-active').forEach(b => active.add(b.dataset.metric));
 
-  // Dataset do preço (eixo y principal)
+  const priceDataXY = priceHist.map(p => ({x: p.date, y: p.close}));
+  const qDates = rows.map(rw => rw.date);
+
   const datasets = [{
-    label:           'Preço',
-    data:            priceValues,
-    borderColor:     color,
-    backgroundColor: color + '18',
-    borderWidth:     2,
-    pointRadius:     0,
-    tension:         0.2,
-    fill:            true,
-    yAxisID:         'yPrice',
-    order:           0,
+    label:'Preço', data: priceDataXY,
+    borderColor: color, backgroundColor: color+'18',
+    borderWidth:2, pointRadius:0, tension:0.2, fill:true, yAxisID:'yPrice', order:0
   }];
 
-  // Datasets das métricas (eixo y secundário, escalado)
   for (const [key, m] of Object.entries(metricMap)) {
     if (!active.has(key)) continue;
     datasets.push({
-      label:       m.label,
-      data:        m.data,
-      borderColor: m.color,
-      backgroundColor: 'transparent',
-      borderWidth: 1.5,
-      borderDash:  [5, 3],
-      pointRadius: 3,
-      pointBackgroundColor: m.color,
-      tension:     0.3,
-      fill:        false,
-      yAxisID:     'yMetric',
-      order:       1,
-      // Alinha às datas dos trimestres
+      label: m.label, data: m.data.map((v,i) => ({x: qDates[i], y: v})),
+      borderColor: m.color, backgroundColor:'transparent',
+      borderWidth:1.5, borderDash:[5,3], pointRadius:3, pointBackgroundColor:m.color,
+      tension:0.3, fill:false, yAxisID:'yMetric', order:1
     });
-    // Corrige labels para usar datas dos trimestres para métricas
-    datasets[datasets.length-1]._qDates = qDates;
   }
 
   if (chartInstances[`ch-price-${ticker}`]) chartInstances[`ch-price-${ticker}`].destroy();
-
-  // Usa datas do preço para eixo X, mas plota métricas nas datas dos trimestres
-  // Estratégia: dataset de preço usa priceDates, métricas usam qDates
-  // Chart.js suporta dados como {x, y} para datasets com datas diferentes
-
-  const priceDataXY  = priceHist.map(p => ({x: p.date, y: p.close}));
-
-  const metricDatasets = datasets.slice(1).map(d => {
-    const qd = d._qDates || qDates;
-    return {
-      ...d,
-      data: d.data.map((v, i) => ({x: qd[i], y: v})),
-    };
-  });
-
   chartInstances[`ch-price-${ticker}`] = new Chart(canvas, {
-    type: 'line',
-    data: { datasets: [{ ...datasets[0], data: priceDataXY }, ...metricDatasets] },
-    options: {
-      responsive: true,
-      maintainAspectRatio: true,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: true, labels: { color: '#94a3b8', font: { size: 11 }, usePointStyle: true } },
-        tooltip: {
-          callbacks: {
-            label: ctx => {
-              const v = ctx.parsed.y;
-              if (v == null) return null;
-              return `${ctx.dataset.label}: $${v.toFixed(2)}`;
-            }
-          }
-        }
+    type:'line', data:{datasets},
+    options:{
+      responsive:true, maintainAspectRatio:true,
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, labels:{color:'#94a3b8', font:{size:11}, usePointStyle:true}},
+        tooltip:{callbacks:{label: ctx => {
+          const v = ctx.parsed.y;
+          return v == null ? null : `${ctx.dataset.label}: $${v.toFixed(2)}`;
+        }}}
       },
-      scales: {
-        x: {
-          type: 'time',
-          time: { unit: 'month', displayFormats: { month: 'MMM yy' } },
-          ticks: { color: '#64748b', maxTicksLimit: 10, font: { size: 9 } },
-          grid:  { color: '#2d3150' },
-        },
-        yPrice: {
-          type: 'linear', position: 'left',
-          ticks: { color: '#94a3b8', font: { size: 9 }, callback: v => '$'+v.toFixed(0) },
-          grid:  { color: '#2d3150' },
-          title: { display: true, text: 'Preço ($)', color: '#64748b', font: { size: 10 } },
-        },
-        yMetric: {
-          type: 'linear', position: 'right',
-          ticks: { color: '#64748b', font: { size: 9 }, callback: v => '$'+v.toFixed(1) },
-          grid:  { drawOnChartArea: false },
-          title: { display: true, text: 'Métricas / Ação ($)', color: '#64748b', font: { size: 10 } },
-        },
+      scales:{
+        x:{type:'time', time:{unit:'month', displayFormats:{month:'MMM yy'}},
+           ticks:{color:'#64748b', maxTicksLimit:10, font:{size:9}}, grid:{color:'#2d3150'}},
+        yPrice:{type:'linear', position:'left',
+                ticks:{color:'#94a3b8', font:{size:9}, callback:v=>'$'+v.toFixed(0)},
+                grid:{color:'#2d3150'},
+                title:{display:true, text:'Preço ($)', color:'#64748b', font:{size:10}}},
+        yMetric:{type:'linear', position:'right',
+                 ticks:{color:'#64748b', font:{size:9}, callback:v=>'$'+v.toFixed(1)},
+                 grid:{drawOnChartArea:false},
+                 title:{display:true, text:'Métricas/Ação ($)', color:'#64748b', font:{size:10}}}
       }
     }
   });
 }
 
-// ─── 45Q Table ────────────────────────────────────────────────────────────────
+// ─── Aba Trimestres ───────────────────────────────────────────────────────────
 function buildTablePanel(r) {
   const rows = r.rows;
   const metrics = [
@@ -654,43 +714,37 @@ function buildTablePanel(r) {
     {label:'Cash Retornado / Ação',  fn: rw => rw.cash_returned_ps},
     {label:'Eco. Profit / Ação TTM', fn: rw => rw.econ_profit_ps},
     {label:'Cap. Investido / Ação',  fn: rw => rw.invested_cap_ps},
-    {label:'ROIC',                   fn: rw => rw.roic, pct: true},
-    {label:'ROIC ex-Goodwill',       fn: rw => rw.roic_ex_gw, pct: true},
-    {label:'ROIIC (1 ano)',          fn: rw => rw.roiic_1y, pct: true},
-    {label:'WACC',                   fn: rw => rw.wacc, pct: true},
-    {label:'Tax Rate Efetivo',       fn: rw => rw.eff_tax, pct: true},
-    {label:'Capex / Receita',        fn: rw => rw.capex_rev, pct: true},
-    {label:'Opex / Receita',         fn: rw => rw.opex_rev, pct: true},
-    {label:'Net Debt / FCF (anos)',  fn: rw => rw.net_debt_fcf, raw: true},
-    {label:'Ações Diluídas',         fn: rw => rw.shares, shares: true},
+    {label:'ROIC',                   fn: rw => rw.roic, pct:true},
+    {label:'ROIC ex-Goodwill',       fn: rw => rw.roic_ex_gw, pct:true},
+    {label:'ROIIC (1 ano)',          fn: rw => rw.roiic_1y, pct:true},
+    {label:'WACC',                   fn: rw => rw.wacc, pct:true},
+    {label:'Tax Rate Efetivo',       fn: rw => rw.eff_tax, pct:true},
+    {label:'Capex / Receita',        fn: rw => rw.capex_rev, pct:true},
+    {label:'Opex / Receita',         fn: rw => rw.opex_rev, pct:true},
+    {label:'Net Debt / FCF (anos)',  fn: rw => rw.net_debt_fcf, raw:true},
+    {label:'Ações Diluídas',         fn: rw => rw.shares, shares:true},
   ];
 
-  const dates = rows.map(rw => rw.date.slice(0,7));
-  const thHtml = dates.map(d => `<th class="qtr-header">${d}</th>`).join('');
-
+  const dates   = rows.map(rw => rw.date.slice(0,7));
+  const thHtml  = dates.map(d => `<th class="qtr-header">${d}</th>`).join('');
   const tbodyHtml = metrics.map(m => {
     const cells = rows.map((rw, i) => {
       const v = m.fn(rw);
-      let display, pctChange = null;
+      let display;
+      if (v == null || isNaN(v)) display = '—';
+      else if (m.shares) display = (v/1e9).toFixed(3)+'B';
+      else if (m.pct)    display = (v*100).toFixed(1)+'%';
+      else if (m.raw)    display = v.toFixed(1)+'x';
+      else               display = '$'+v.toFixed(2);
 
-      if (v == null || v !== v) { display = '—'; }
-      else if (m.shares)        { display = (v/1e9).toFixed(3)+'B'; }
-      else if (m.pct)           { display = v != null ? (v*100).toFixed(1)+'%' : '—'; }
-      else if (m.raw)           { display = v != null ? v.toFixed(1)+'x' : '—'; }
-      else                      { display = v != null ? '$'+v.toFixed(2) : '—'; }
-
-      // QoQ % change
-      if (i > 0 && v != null && v === v) {
+      let pctChange = null;
+      if (i > 0 && v != null && !isNaN(v)) {
         const prev = m.fn(rows[i-1]);
-        if (prev != null && prev !== 0 && prev === prev) {
-          pctChange = (v - prev) / Math.abs(prev);
-        }
+        if (prev != null && prev !== 0 && !isNaN(prev)) pctChange = (v - prev) / Math.abs(prev);
       }
-
       const pctHtml = pctChange != null
-        ? `<span class="${pctChange >= 0 ? 'pct-pos' : 'pct-neg'}">${pctChange >= 0 ? '▲' : '▼'} ${Math.abs(pctChange*100).toFixed(1)}%</span>`
+        ? `<span class="${pctChange >= 0 ? 'pct-pos':'pct-neg'}">${pctChange>=0?'▲':'▼'} ${Math.abs(pctChange*100).toFixed(1)}%</span>`
         : '';
-
       return `<td><div class="pct-cell"><span>${display}</span>${pctHtml}</div></td>`;
     }).join('');
     return `<tr><td>${m.label}</td>${cells}</tr>`;
@@ -701,7 +755,7 @@ function buildTablePanel(r) {
 
   return `
     <div class="table-toolbar">
-      <span style="font-size:12px;color:var(--text3)">${rows.length} trimestres · Fonte: Yahoo Finance · Arraste horizontalmente para ver todos</span>
+      <span style="font-size:12px;color:var(--text3)">${rows.length} trimestres · Arraste horizontalmente</span>
       <button class="export-btn" onclick="${fnName}()">⬇ Exportar CSV</button>
     </div>
     <div class="data-table-wrap">
@@ -712,83 +766,6 @@ function buildTablePanel(r) {
     </div>`;
 }
 
-
-// ─── Glossário ────────────────────────────────────────────────────────────────
-function buildGlossaryPanel() {
-  const terms = [
-    {
-      cat: "Métricas de Lucro Operacional",
-      items: [
-        { term: "EBIT", def: "Earnings Before Interest and Taxes — lucro operacional antes dos juros e impostos. Mede a geração de caixa operacional pura da empresa, excluindo efeitos financeiros e fiscais." },
-        { term: "EBITDA", def: "EBIT + Depreciação e Amortização. Aproximação do fluxo de caixa operacional, muito usada para comparação entre empresas de diferentes países e estruturas de capital." },
-        { term: "NOPAT", def: "Net Operating Profit After Tax — EBIT × (1 − alíquota efetiva de imposto). Representa o lucro operacional após impostos, base para o cálculo do ROIC e do Economic Profit." },
-      ]
-    },
-    {
-      cat: "Fluxo de Caixa",
-      items: [
-        { term: "OCF − SBC", def: "Operating Cash Flow menos Stock-Based Compensation. O caixa operacional ajustado pela remuneração em ações, que é uma despesa real diluída ao acionista mas não sai do caixa." },
-        { term: "FCF − SBC", def: "Free Cash Flow menos SBC. OCF − Capex − SBC. É o caixa livre real gerado para o acionista após investimentos e remuneração em ações. Métrica mais conservadora que o FCF tradicional." },
-        { term: "Capex / Receita", def: "Percentual da receita investido em ativos fixos (Property, Plant & Equipment). Empresas de tecnologia tendem a ter Capex baixo; industriais e utilities, alto." },
-        { term: "Opex / Receita", def: "Despesas operacionais (excluindo COGS e D&A) como percentual da receita. Mede a eficiência operacional." },
-      ]
-    },
-    {
-      cat: "Retorno sobre Capital",
-      items: [
-        { term: "ROIC", def: "Return on Invested Capital — NOPAT ÷ Capital Investido. Mede quanto a empresa gera de retorno para cada real investido. ROIC > WACC significa criação de valor." },
-        { term: "ROIC ex-Goodwill", def: "ROIC calculado excluindo o Goodwill do capital investido. Mostra o retorno sobre o capital tangível, eliminando o efeito de aquisições a prêmio." },
-        { term: "ROIIC", def: "Return on Incremental Invested Capital — variação do NOPAT ÷ variação do Capital Investido (1 ano). Mede o retorno sobre o capital marginal investido recentemente." },
-      ]
-    },
-    {
-      cat: "Custo de Capital e Valor Econômico",
-      items: [
-        { term: "WACC", def: "Weighted Average Cost of Capital — custo médio ponderado de capital. Combina o custo do capital próprio (assumido 10%) com o custo da dívida após impostos, ponderados pela estrutura de capital." },
-        { term: "Economic Profit (EVA)", def: "NOPAT − (WACC × Capital Investido). Valor econômico criado acima do custo de capital. EVA positivo = empresa criando valor; EVA negativo = destruindo valor mesmo com lucro contábil." },
-        { term: "Spread ROIC−WACC", def: "ROIC menos WACC. Spread positivo indica criação de valor; negativo indica destruição. Empresas com spread alto e crescente são as mais valiosas a longo prazo." },
-      ]
-    },
-    {
-      cat: "Valuation",
-      items: [
-        { term: "EV / EBIT", def: "Enterprise Value dividido pelo EBIT TTM. Múltiplo de valuation que compara o valor total da empresa (incluindo dívida) com sua geração operacional. Mais conservador que P/L." },
-        { term: "Fórmula de Graham", def: "Valor Intrínseco = EPS × (8,5 + 2 × CAGR%) × 4,4 / Y, onde Y é o yield do Treasury de 10 anos. Benjamin Graham desenvolveu esta fórmula como estimativa do valor justo de uma ação em crescimento." },
-        { term: "Margem de Segurança", def: "MS = (Valor Intrínseco − Preço) / Valor Intrínseco. Percentual pelo qual o preço está abaixo (positivo = desconto) ou acima (negativo = prêmio) do valor intrínseco de Graham. Graham recomendava MS > 33%." },
-        { term: "CAGR", def: "Compound Annual Growth Rate — taxa de crescimento anual composta. Calculada com base no histórico de 5 ou 3 anos disponível." },
-        { term: "TIR (EBIT Yield)", def: "Taxa Interna de Retorno implícita: EBIT ÷ Enterprise Value. Representa o retorno que um comprador pagando o EV atual obteria se o EBIT se mantivesse constante." },
-      ]
-    },
-    {
-      cat: "Estrutura de Capital e Liquidez",
-      items: [
-        { term: "Cash Excess / Ação", def: "Caixa total menos dívida total, dividido pelo número de ações. Representa o excesso de caixa líquido por ação que pode ser devolvido ao acionista sem afetar as operações." },
-        { term: "Net Debt / FCF", def: "Dívida líquida dividida pelo FCF−SBC anual. Indica em quantos anos a empresa quitaria toda a dívida líquida com seu fluxo de caixa livre atual. Negativo = empresa com caixa líquido." },
-        { term: "Tax Rate Efetivo", def: "Imposto de renda pago ÷ Lucro antes do imposto (TTM). A alíquota real paga pela empresa, que pode diferir significativamente da alíquota nominal por incentivos, deduções e estrutura internacional." },
-        { term: "Capital Investido", def: "NWC (Capital de Giro Líquido) + PP&E + Goodwill + Intangíveis. Representa o total de recursos investidos nas operações da empresa, base para o cálculo do ROIC." },
-        { term: "FCF Yield", def: "FCF−SBC ÷ Market Cap. Rendimento do caixa livre — quanto % do valor de mercado é gerado em caixa livre. Pode ser comparado com o yield de títulos para avaliar atratividade relativa." },
-      ]
-    },
-  ];
-
-  const html = terms.map(cat => `
-    <div class="glossary-cat">
-      <div class="glossary-cat-title">${cat.cat}</div>
-      <div class="glossary-items">
-        ${cat.items.map(item => `
-          <div class="glossary-item">
-            <div class="glossary-term">${item.term}</div>
-            <div class="glossary-def">${item.def}</div>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  `).join('');
-
-  return `<div class="glossary-wrap">${html}</div>`;
-}
-
-// ─── CSV Export ───────────────────────────────────────────────────────────────
 function exportCSV(r) {
   const rows   = r.rows;
   const fields = Object.keys(rows[0]).filter(k => !k.startsWith('_'));
@@ -799,4 +776,57 @@ function exportCSV(r) {
   a.href       = URL.createObjectURL(blob);
   a.download   = `${r.ticker}_${r.rows.length}Q_${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
+}
+
+// ─── Aba Glossário ────────────────────────────────────────────────────────────
+function buildGlossaryPanel() {
+  const cats = [
+    { title: '📊 Métricas de Retorno', items: [
+      {term:'NOPAT', def:'Net Operating Profit After Tax — EBIT × (1 − alíquota efetiva). Lucro operacional após impostos, base para ROIC e EVA.'},
+      {term:'ROIC', def:'Return on Invested Capital — NOPAT ÷ Capital Investido ex-Goodwill. Mede quanto a empresa gera por real investido. ROIC > WACC = criação de valor.'},
+      {term:'ROIC ex-Goodwill', def:'ROIC calculado excluindo goodwill do capital investido. Mostra o retorno sobre ativos tangíveis, sem distorção de aquisições a prêmio.'},
+      {term:'ROIIC', def:'Return on Incremental Invested Capital — variação do NOPAT ÷ variação do Capital Investido (1 ano). Mede a qualidade do crescimento recente.'},
+    ]},
+    { title: '⚖️ Custo de Capital', items: [
+      {term:'WACC', def:'Weighted Average Cost of Capital — Ke×We + Kd×(1−t)×Wd. Ke = 10% fixo (proxy mercado americano). Kd = despesa financeira ÷ dívida.'},
+      {term:'Economic Profit (EVA)', def:'NOPAT − (WACC × Capital Investido ex-Goodwill). Valor criado acima do custo de capital. EVA > 0 = criação de valor real.'},
+      {term:'Spread ROIC−WACC', def:'ROIC menos WACC. Principal indicador de qualidade. Spread positivo e crescente = empresa mais valiosa ao longo do tempo.'},
+    ]},
+    { title: '💵 Fluxo de Caixa', items: [
+      {term:'FCF−SBC', def:'Free Cash Flow ajustado por Stock-Based Compensation. Fórmula: OCF − |Capex| − SBC. O SBC é deduzido porque dilui o acionista (despesa real não-caixa).'},
+      {term:'OCF−SBC', def:'Fluxo de Caixa Operacional menos Stock-Based Compensation. Versão do FCF antes do desconto do Capex.'},
+      {term:'Cash Retornado', def:'Dividendos pagos + Recompra de ações. Total devolvido ao acionista no período (TTM).'},
+    ]},
+    { title: '📐 Capital Investido', items: [
+      {term:'Capital Investido', def:'NWC + PP&E + Goodwill + Intangíveis. Total de recursos investidos nas operações. Base para o cálculo do ROIC.'},
+      {term:'NWC', def:'Net Working Capital — (Ativo Circulante − Caixa) − (Passivo Circulante − Dívida CP). Capital de giro operacional líquido.'},
+      {term:'Cash Excess', def:'max(Caixa Completo − Dívida Total, 0). Caixa líquido positivo disponível. Caixa Completo = ST Investments + LT Investments.'},
+    ]},
+    { title: '🎯 Valuation', items: [
+      {term:'Fórmula de Graham', def:'V = EPS × (8,5 + 2×g%) × (4,4÷Y%). 8,5 = múltiplo base; g% = CAGR histórico 5 anos; 4,4 = AAA bond 1962; Y% = Treasury 10Y atual.'},
+      {term:'Margem de Segurança', def:'(V − Preço) ÷ V. MS > 0 = ação abaixo do valor intrínseco calculado. MS < 0 = ação cara pelo critério de Graham.'},
+      {term:'EV/EBIT', def:'Enterprise Value ÷ EBIT (TTM). Múltiplo de valuation. EV = Market Cap + Dívida − Caixa Completo.'},
+      {term:'EBIT Yield (TIR)', def:'EBIT ÷ Enterprise Value. Inverso do EV/EBIT. Rendimento operacional implícito para quem comprasse a empresa toda.'},
+    ]},
+    { title: '🏦 Financeiras', items: [
+      {term:'ROE', def:'Return on Equity — Lucro Líquido ÷ Patrimônio Líquido. Principal métrica de rentabilidade para bancos, substitui o ROIC.'},
+      {term:'P/TBV', def:'Preço ÷ Tangible Book Value/ação. TBV = PL − Goodwill. Múltiplo fundamental para bancos. < 1x pode indicar desconto relevante.'},
+      {term:'NIM', def:'Net Interest Margin — Receita Líquida de Juros ÷ Ativos Rentáveis. Aqui calculado como proxy (receita total ÷ total de ativos).'},
+      {term:'Eficiência', def:'Despesas Operacionais ÷ Receita Total. Quanto menor, mais eficiente. Bancos bem geridos: abaixo de 50%.'},
+    ]},
+  ];
+
+  const html = cats.map(cat => `
+    <div class="glossary-cat">
+      <div class="glossary-cat-title">${cat.title}</div>
+      <div class="glossary-items">
+        ${cat.items.map(item => `
+          <div class="glossary-item">
+            <div class="glossary-term">${item.term}</div>
+            <div class="glossary-def">${item.def}</div>
+          </div>`).join('')}
+      </div>
+    </div>`).join('');
+
+  return `<div class="glossary-wrap">${html}</div>`;
 }
