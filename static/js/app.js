@@ -304,9 +304,9 @@ function switchTab(ticker, tab, btnEl) {
 function histCard(label, current, histValues, unit='%', invertColor=false) {
   const vals = histValues.filter(v => v != null && !isNaN(v));
   const avg  = vals.length ? vals.reduce((a,b) => a+b, 0) / vals.length : null;
-  const diff = (current != null && avg != null) ? current - avg : null;
-  const isGood = invertColor ? (diff != null && diff < 0) : (diff != null && diff > 0);
-  const isBad  = invertColor ? (diff != null && diff > 0) : (diff != null && diff < 0);
+  const pctDiff = (current != null && avg != null && avg !== 0) ? (current - avg) / Math.abs(avg) : null;
+  const isGood = invertColor ? (pctDiff != null && pctDiff < 0) : (pctDiff != null && pctDiff > 0);
+  const isBad  = invertColor ? (pctDiff != null && pctDiff > 0) : (pctDiff != null && pctDiff < 0);
 
   const fmt2 = v => {
     if (v == null) return '—';
@@ -316,21 +316,23 @@ function histCard(label, current, histValues, unit='%', invertColor=false) {
     return v.toFixed(2);
   };
 
-  const diffStr = diff != null ? (diff >= 0 ? '+' : '') + (unit === '%' ? (diff*100).toFixed(1)+'%' : diff.toFixed(2)) : '';
-  const arrow   = isGood ? '▲' : isBad ? '▼' : '●';
-  const clr     = isGood ? '#22c55e' : isBad ? '#ef4444' : '#94a3b8';
+  const pctStr = pctDiff != null ? (pctDiff >= 0 ? '+' : '') + (pctDiff * 100).toFixed(1) + '%' : '';
+  const arrow  = isGood ? '▲' : isBad ? '▼' : '●';
+  const clr    = isGood ? '#22c55e' : isBad ? '#ef4444' : '#94a3b8';
 
   return `<div class="hist-card">
-    <div class="hist-label">${label}</div>
-    <div class="hist-row">
-      <div class="hist-block">
-        <div class="hist-val">${fmt2(current)}</div>
-        <div class="hist-sub">Atual</div>
+    <div class="hist-label">${label}${tooltip(label)}</div>
+    <div class="hist-main-row">
+      <div class="hist-center">
+        <div class="hist-val-current">${fmt2(current)}</div>
+        <div class="hist-sub-row">
+          <span class="hist-avg-label">Média histórica:</span>
+          <span class="hist-avg-val">${fmt2(avg)}</span>
+        </div>
       </div>
-      <div class="hist-arrow" style="color:${clr}">${arrow}<br><span style="font-size:10px">${diffStr}</span></div>
-      <div class="hist-block">
-        <div class="hist-val hist-muted">${fmt2(avg)}</div>
-        <div class="hist-sub">Histórico</div>
+      <div class="hist-delta" style="color:${clr}">
+        <span class="hist-arrow">${arrow}</span>
+        <span class="hist-pct">${pctStr}</span>
       </div>
     </div>
   </div>`;
@@ -391,17 +393,17 @@ function buildValuation(r, v, color) {
   <div class="section-body">
     <div class="gauge-row">
       <div class="gauge-card">
-        <div class="gauge-title">ROIC</div>
+        <div class="gauge-title">ROIC ${tooltip('ROIC')}</div>
         ${roicGauge}
         <div class="gauge-note">Return on Invested Capital</div>
       </div>
       <div class="gauge-card">
-        <div class="gauge-title">WACC</div>
+        <div class="gauge-title">WACC ${tooltip('WACC')}</div>
         ${waccGauge}
         <div class="gauge-note">Custo médio de capital</div>
       </div>
       <div class="gauge-card">
-        <div class="gauge-title">Spread ROIC−WACC</div>
+        <div class="gauge-title">Spread ROIC−WACC ${tooltip('Spread ROIC−WACC')}</div>
         ${spreadGauge}
         <div class="gauge-note">Criação de valor econômico</div>
       </div>
@@ -419,40 +421,40 @@ function buildValuation(r, v, color) {
   <div class="section-body">
     <div class="gauge-row">
       <div class="gauge-card">
-        <div class="gauge-title">FCF Yield</div>
+        <div class="gauge-title">FCF Yield ${tooltip('FCF Yield')}</div>
         ${fcfGauge}
         <div class="gauge-note">FCF−SBC ÷ Market Cap</div>
       </div>
       <div class="gauge-card">
-        <div class="gauge-title">EBIT Yield</div>
+        <div class="gauge-title">EBIT Yield ${tooltip('EBIT Yield')}</div>
         ${ebitGauge}
         <div class="gauge-note">EBIT ÷ Enterprise Value</div>
       </div>
       <div class="gauge-card">
-        <div class="gauge-title">EV / EBIT</div>
+        <div class="gauge-title">EV / EBIT ${tooltip('EV / EBIT')}</div>
         ${evGauge}
         <div class="gauge-note">Múltiplo de valuation</div>
       </div>
     </div>
     <div class="kpi-strip">
       <div class="kpi-pill">
-        <span class="kpi-pill-label">Market Cap</span>
+        <span class="kpi-pill-label">Market Cap ${tooltip('Market Cap')}</span>
         <span class="kpi-pill-val">${fmt.bn(v.mktcap)}</span>
       </div>
       <div class="kpi-pill">
-        <span class="kpi-pill-label">Enterprise Value</span>
+        <span class="kpi-pill-label">Enterprise Value ${tooltip('Enterprise Value')}</span>
         <span class="kpi-pill-val">${fmt.bn(v.ev)}</span>
       </div>
       <div class="kpi-pill">
-        <span class="kpi-pill-label">Cash Excess/Ação</span>
+        <span class="kpi-pill-label">Cash Excess/Ação ${tooltip('Cash Excess/Ação')}</span>
         <span class="kpi-pill-val ${colorClass(v.cash_excess_ps)}">${fmt.$(v.cash_excess_ps)}</span>
       </div>
       <div class="kpi-pill">
-        <span class="kpi-pill-label">Div Yield</span>
+        <span class="kpi-pill-label">Div Yield ${tooltip('Div Yield')}</span>
         <span class="kpi-pill-val">${fmt.pct(v.div_yield)}</span>
       </div>
       <div class="kpi-pill">
-        <span class="kpi-pill-label">Treasury 10Y</span>
+        <span class="kpi-pill-label">Treasury 10Y ${tooltip('Treasury 10Y')}</span>
         <span class="kpi-pill-val">${fmt.pct(v.treasury_yield)}</span>
       </div>
     </div>
@@ -513,7 +515,7 @@ function buildValuationFinancial(r, v) {
       <div class="kpi-pill"><span class="kpi-pill-label">Eficiência</span><span class="kpi-pill-val ${v.efficiency < 0.5 ? 'green' : 'red'}">${fmt.pct(v.efficiency)}</span></div>
       <div class="kpi-pill"><span class="kpi-pill-label">NIM (proxy)</span><span class="kpi-pill-val">${fmt.pct(v.nim_proxy)}</span></div>
       <div class="kpi-pill"><span class="kpi-pill-label">Payout</span><span class="kpi-pill-val">${fmt.pct(v.payout)}</span></div>
-      <div class="kpi-pill"><span class="kpi-pill-label">Div Yield</span><span class="kpi-pill-val">${fmt.pct(v.div_yield)}</span></div>
+      <div class="kpi-pill"><span class="kpi-pill-label">Div Yield ${tooltip('Div Yield')}</span><span class="kpi-pill-val">${fmt.pct(v.div_yield)}</span></div>
       <div class="kpi-pill"><span class="kpi-pill-label">Total Ativos</span><span class="kpi-pill-val">${fmt.bn(v.total_assets)}</span></div>
       <div class="kpi-pill"><span class="kpi-pill-label">PL</span><span class="kpi-pill-val">${fmt.bn(v.equity_abs)}</span></div>
     </div>
