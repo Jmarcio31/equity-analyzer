@@ -71,73 +71,85 @@ function showTooltipModal(el) {
 }
 
 // ─── Gauge SVG ────────────────────────────────────────────────────────────────
-function makeGauge(value, min, max, label, unit='%', thresholds) {
-  // thresholds: [{pct: 0.33, color: '#ef4444'}, {pct: 0.66, color: '#f59e0b'}, {pct: 1, color: '#22c55e'}]
-  const pct    = Math.max(0, Math.min(1, (value - min) / (max - min)));
-  const angle  = -135 + pct * 270; // -135 a +135 graus
-  const r = 52, cx = 70, cy = 70;
+function gaugeArc(cx, cy, r, startDeg, endDeg) {
+  const rad = d => (d - 90) * Math.PI / 180;
+  const sx = cx + r * Math.cos(rad(startDeg)), sy = cy + r * Math.sin(rad(startDeg));
+  const ex = cx + r * Math.cos(rad(endDeg)),   ey = cy + r * Math.sin(rad(endDeg));
+  const large = (endDeg - startDeg) > 180 ? 1 : 0;
+  return `M ${sx} ${sy} A ${r} ${r} 0 ${large} 1 ${ex} ${ey}`;
+}
 
-  // Arco de fundo em segmentos coloridos
-  function polarToXY(deg, radius) {
-    const rad = (deg - 90) * Math.PI / 180;
-    return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) };
+// makeGaugeCard: gauge + valor atual + média histórica + seta % — tudo integrado
+function makeGaugeCard(title, tooltipKey, value, histValues, min, max, unit, note, thresholds, invertColor=false) {
+  if (value == null || isNaN(value)) {
+    return `<div class="gauge-card">
+      <div class="gauge-title">${title} ${tooltip(tooltipKey||title)}</div>
+      <div style="text-align:center;color:var(--text3);padding:32px 0">—</div>
+      <div class="gauge-note">${note}</div>
+    </div>`;
   }
-  function arcPath(startDeg, endDeg, r) {
-    const s = polarToXY(startDeg, r);
-    const e = polarToXY(endDeg, r);
-    const large = (endDeg - startDeg) > 180 ? 1 : 0;
-    return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 1 ${e.x} ${e.y}`;
-  }
 
-  const th = thresholds || [
-    {pct: 0.33, color: '#ef4444'},
-    {pct: 0.66, color: '#f59e0b'},
-    {pct: 1.00, color: '#22c55e'},
-  ];
+  const pct = Math.max(0, Math.min(1, (value - min) / (max - min)));
+  const cx = 70, cy = 68, r = 52;
+  const th = thresholds || [{pct:0.33,color:'#ef4444'},{pct:0.66,color:'#f59e0b'},{pct:1,color:'#22c55e'}];
 
-  let arcs = '';
-  let prev = 0;
+  let arcs = '', prev = 0;
   th.forEach(t => {
-    const startDeg = -135 + prev * 270;
-    const endDeg   = -135 + t.pct * 270;
-    arcs += `<path d="${arcPath(startDeg, endDeg, r)}" stroke="${t.color}" stroke-width="10" fill="none" stroke-linecap="butt" opacity="0.85"/>`;
+    arcs += `<path d="${gaugeArc(cx,cy,r,-135+prev*270,-135+t.pct*270)}" stroke="${t.color}" stroke-width="10" fill="none" stroke-linecap="butt" opacity="0.9"/>`;
     prev = t.pct;
   });
 
-  // Ponteiro
+  const angle = -135 + pct * 270;
   const needleRad = (angle - 90) * Math.PI / 180;
-  const nx = cx + 40 * Math.cos(needleRad);
-  const ny = cy + 40 * Math.sin(needleRad);
+  const nx = cx + 42 * Math.cos(needleRad), ny = cy + 42 * Math.sin(needleRad);
 
-  // Cor do valor
   let valColor = '#22c55e';
-  const pctFill = pct;
-  if (pctFill < 0.33) valColor = '#ef4444';
-  else if (pctFill < 0.66) valColor = '#f59e0b';
+  if (pct < 0.33) valColor = '#ef4444';
+  else if (pct < 0.66) valColor = '#f59e0b';
 
-  const dispVal = unit === '%' ? (value * 100).toFixed(1) + '%'
-                : unit === 'x' ? value.toFixed(1) + 'x'
-                : unit === '$' ? '$' + value.toFixed(2)
-                : value.toFixed(2);
+  const fmtVal = v => {
+    if (v == null) return '—';
+    return unit==='%' ? (v*100).toFixed(1)+'%' : unit==='x' ? v.toFixed(1)+'x' : unit==='$' ? '$'+v.toFixed(2) : v.toFixed(2);
+  };
 
-  return `<svg viewBox="0 0 140 100" class="gauge-svg">
-    <!-- Track -->
-    <path d="${arcPath(-135, 135, r)}" stroke="var(--border)" stroke-width="10" fill="none" stroke-linecap="butt"/>
-    <!-- Colored arcs -->
-    ${arcs}
-    <!-- Active fill -->
-    <path d="${arcPath(-135, -135 + pct * 270, r)}" stroke="white" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.3"/>
-    <!-- Needle -->
-    <line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
-    <circle cx="${cx}" cy="${cy}" r="4" fill="white"/>
-    <!-- Value -->
-    <text x="${cx}" y="${cy + 18}" text-anchor="middle" font-size="14" font-weight="700" fill="${valColor}">${dispVal}</text>
-    <!-- Label -->
-    <text x="${cx}" y="${cy + 30}" text-anchor="middle" font-size="8.5" fill="var(--text3)">${label}</text>
-    <!-- Min/Max -->
-    <text x="16" y="92" text-anchor="middle" font-size="7" fill="var(--text3)">${unit === '%' ? (min*100).toFixed(0)+'%' : min}</text>
-    <text x="124" y="92" text-anchor="middle" font-size="7" fill="var(--text3)">${unit === '%' ? (max*100).toFixed(0)+'%' : max}</text>
-  </svg>`;
+  const dispVal = fmtVal(value);
+  const minLbl = unit==='%' ? (min*100).toFixed(0)+'%' : min;
+  const maxLbl = unit==='%' ? (max*100).toFixed(0)+'%' : max;
+
+  // Histórico
+  const vals = (histValues||[]).filter(v => v != null && !isNaN(v));
+  const avg  = vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+  const pctDiff = (avg != null && avg !== 0) ? (value - avg) / Math.abs(avg) : null;
+  const isGood  = invertColor ? pctDiff != null && pctDiff < 0 : pctDiff != null && pctDiff > 0;
+  const isBad   = invertColor ? pctDiff != null && pctDiff > 0 : pctDiff != null && pctDiff < 0;
+  const dColor  = isGood ? '#22c55e' : isBad ? '#ef4444' : '#94a3b8';
+  const arrow   = isGood ? '▲' : isBad ? '▼' : '●';
+  const pctStr  = pctDiff != null ? (pctDiff>=0?'+':'')+(pctDiff*100).toFixed(1)+'%' : '';
+
+  return `<div class="gauge-card">
+    <div class="gauge-title">${title} ${tooltip(tooltipKey||title)}</div>
+    <svg viewBox="0 0 140 100" class="gauge-svg">
+      <path d="${gaugeArc(cx,cy,r,-135,135)}" stroke="var(--border)" stroke-width="10" fill="none" stroke-linecap="butt"/>
+      ${arcs}
+      <line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="${cx}" cy="${cy}" r="4" fill="white"/>
+      <text x="16" y="94" text-anchor="middle" font-size="7" fill="var(--text3)">${minLbl}</text>
+      <text x="124" y="94" text-anchor="middle" font-size="7" fill="var(--text3)">${maxLbl}</text>
+    </svg>
+    <div class="gauge-bottom">
+      <div class="gauge-current">${dispVal}</div>
+      ${avg != null ? `<div class="gauge-hist-row">
+        <span class="gauge-hist-label">Média histórica: ${fmtVal(avg)}</span>
+        <span class="gauge-hist-delta" style="color:${dColor}">${arrow} ${pctStr}</span>
+      </div>` : ''}
+    </div>
+    <div class="gauge-note">${note}</div>
+  </div>`;
+}
+
+// Compatibilidade: makeGauge retorna apenas o SVG (para uso legado)
+function makeGauge(value, min, max, label, unit, thresholds) {
+  return makeGaugeCard(label, label, value, [], min, max, unit||'%', '', thresholds).replace(/<div class="gauge-card">.*?<svg/s,'<svg').split('</svg>')[0]+'</svg>';
 }
 
 // ─── Seleção de cards na landing ──────────────────────────────────────────────
@@ -403,19 +415,16 @@ function buildValuation(r, v, color) {
   const divSeries   = rows.map(rw => rw.dividend_ps);
   const revSeries   = rows.map(rw => rw.revenue_ps);
 
-  // Gauges — thresholds para cada métrica
-  const roicGauge  = makeGauge(v.roic_last,  0, 0.5, 'ROIC', '%');
-  const waccGauge  = makeGauge(v.wacc_last,  0, 0.2, 'WACC', '%', [
-    {pct:0.33, color:'#22c55e'},{pct:0.66, color:'#f59e0b'},{pct:1, color:'#ef4444'}
-  ]);
-  const spreadGauge = makeGauge(v.econ_spread, -0.1, 0.5, 'Spread', '%', [
-    {pct:0.17, color:'#ef4444'},{pct:0.33, color:'#f59e0b'},{pct:1, color:'#22c55e'}
-  ]);
-  const fcfGauge   = makeGauge(v.fcf_yield,  0, 0.06, 'FCF Yield', '%');
-  const ebitGauge  = makeGauge(v.tir,        0, 0.08, 'EBIT Yield', '%');
-  const evGauge    = makeGauge(Math.min(v.ev_ebit||50, 50), 0, 50, 'EV/EBIT', 'x', [
-    {pct:0.3, color:'#22c55e'},{pct:0.6, color:'#f59e0b'},{pct:1, color:'#ef4444'}
-  ]);
+  // Gauges integrados com histórico
+  const roicGauge   = makeGaugeCard('ROIC',           'ROIC',           v.roic_last,   roicSeries,   0,    0.5,  '%', 'Return on Invested Capital');
+  const waccGauge   = makeGaugeCard('WACC',           'WACC',           v.wacc_last,   waccSeries,   0,    0.2,  '%', 'Custo médio de capital',
+    [{pct:0.33,color:'#22c55e'},{pct:0.66,color:'#f59e0b'},{pct:1,color:'#ef4444'}], true);
+  const spreadGauge = makeGaugeCard('Spread ROIC−WACC','Spread ROIC−WACC',v.econ_spread,spreadSeries,-0.1, 0.5,  '%', 'Criação de valor econômico',
+    [{pct:0.17,color:'#ef4444'},{pct:0.33,color:'#f59e0b'},{pct:1,color:'#22c55e'}]);
+  const fcfGauge    = makeGaugeCard('FCF Yield',       'FCF Yield',      v.fcf_yield,   rows.map(r=>r.fcf_sbc_ps&&v.price?r.fcf_sbc_ps*rows[rows.length-1].shares/v.mktcap:null), 0, 0.06, '%', 'FCF−SBC ÷ Market Cap');
+  const ebitGauge   = makeGaugeCard('EBIT Yield',      'EBIT Yield',     v.tir,         null,          0,    0.08, '%', 'EBIT ÷ Enterprise Value');
+  const evGauge     = makeGaugeCard('EV / EBIT',       'EV / EBIT',      Math.min(v.ev_ebit||50,50), null, 0, 50, 'x', 'Múltiplo de valuation',
+    [{pct:0.3,color:'#22c55e'},{pct:0.6,color:'#f59e0b'},{pct:1,color:'#ef4444'}]);
 
   // Graham table
   const msRows = [
@@ -443,49 +452,20 @@ function buildValuation(r, v, color) {
   <div class="section-header">🏆 Qualidade do Negócio</div>
   <div class="section-body">
     <div class="gauge-row">
-      <div class="gauge-card">
-        <div class="gauge-title">ROIC ${tooltip('ROIC')}</div>
-        ${roicGauge}
-        <div class="gauge-note">Return on Invested Capital</div>
-      </div>
-      <div class="gauge-card">
-        <div class="gauge-title">WACC ${tooltip('WACC')}</div>
-        ${waccGauge}
-        <div class="gauge-note">Custo médio de capital</div>
-      </div>
-      <div class="gauge-card">
-        <div class="gauge-title">Spread ROIC−WACC ${tooltip('Spread ROIC−WACC')}</div>
-        ${spreadGauge}
-        <div class="gauge-note">Criação de valor econômico</div>
-      </div>
+      ${roicGauge}
+      ${waccGauge}
+      ${spreadGauge}
     </div>
-    <div class="hist-row-grid">
-      ${histCard('ROIC', v.roic_last, roicSeries, '%')}
-      ${histCard('WACC', v.wacc_last, waccSeries, '%', true)}
-      ${histCard('Spread', v.econ_spread, spreadSeries, '%')}
-      ${histCard('EP / Ação', v.ep_ps, epSeries, '$')}
-    </div>
+
   </div>
 
   <!-- SEÇÃO 2: Geração de Caixa e Valuation -->
   <div class="section-header">💰 Geração de Caixa & Valuation</div>
   <div class="section-body">
     <div class="gauge-row">
-      <div class="gauge-card">
-        <div class="gauge-title">FCF Yield ${tooltip('FCF Yield')}</div>
-        ${fcfGauge}
-        <div class="gauge-note">FCF−SBC ÷ Market Cap</div>
-      </div>
-      <div class="gauge-card">
-        <div class="gauge-title">EBIT Yield ${tooltip('EBIT Yield')}</div>
-        ${ebitGauge}
-        <div class="gauge-note">EBIT ÷ Enterprise Value</div>
-      </div>
-      <div class="gauge-card">
-        <div class="gauge-title">EV / EBIT ${tooltip('EV / EBIT')}</div>
-        ${evGauge}
-        <div class="gauge-note">Múltiplo de valuation</div>
-      </div>
+      ${fcfGauge}
+      ${ebitGauge}
+      ${evGauge}
     </div>
     <div class="kpi-strip">
       <div class="kpi-pill">
@@ -509,12 +489,7 @@ function buildValuation(r, v, color) {
         <span class="kpi-pill-val">${fmt.pct(v.treasury_yield)}</span>
       </div>
     </div>
-    <div class="hist-row-grid">
-      ${histCard('FCF/Ação', v.fcf_ps, fcfSeries, '$')}
-      ${histCard('EBIT/Ação', v.ebit_ps, ebitSeries, '$')}
-      ${histCard('Receita/Ação', rows[rows.length-1]?.revenue_ps, revSeries, '$')}
-      ${histCard('Div/Ação', v.div_ps, divSeries, '$')}
-    </div>
+
   </div>
 
   <!-- SEÇÃO 3: Margem de Segurança -->
@@ -541,14 +516,13 @@ function buildValuation(r, v, color) {
 // ─── Aba Valuation Financeiras ─────────────────────────────────────────────
 function buildValuationFinancial(r, v) {
   const rows = r.rows;
-  const roeSeries = rows.map(rw => rw.net_income_ps && rw.invested_cap_ps ? rw.net_income_ps / (rw.equity_abs / rw.shares) : null);
-  const roeGauge = makeGauge(v.roe || 0, 0, 0.35, 'ROE', '%');
-  const peGauge  = makeGauge(Math.min(v.p_e || 30, 40), 0, 40, 'P/E', 'x', [
-    {pct:0.375, color:'#22c55e'},{pct:0.625, color:'#f59e0b'},{pct:1, color:'#ef4444'}
-  ]);
-  const ptbvGauge = makeGauge(Math.min(v.p_tbv || 2, 4), 0, 4, 'P/TBV', 'x', [
-    {pct:0.25, color:'#22c55e'},{pct:0.5, color:'#f59e0b'},{pct:1, color:'#ef4444'}
-  ]);
+
+  const roeSeries  = rows.map(rw => rw.net_income_ps && rw.equity_abs && rw.shares ? (rw.net_income_ps*rw.shares)/rw.equity_abs : null);
+  const roeGauge   = makeGaugeCard('ROE',  'ROE',  v.roe||0, roeSeries, 0, 0.35, '%', 'Return on Equity');
+  const peGauge    = makeGaugeCard('P/E',  'P/E',  Math.min(v.p_e||30,40), null, 0, 40, 'x', 'Preço ÷ Lucro/Ação',
+    [{pct:0.375,color:'#22c55e'},{pct:0.625,color:'#f59e0b'},{pct:1,color:'#ef4444'}]);
+  const ptbvGauge  = makeGaugeCard('P/TBV','P/TBV',Math.min(v.p_tbv||2,4), null, 0, 4, 'x', 'Preço ÷ Tangible BV',
+    [{pct:0.25,color:'#22c55e'},{pct:0.5,color:'#f59e0b'},{pct:1,color:'#ef4444'}]);
 
   return `
   <div class="fin-notice">⚠️ <b>Instituição Financeira</b> — framework adaptado (Damodaran). ROIC/EVA/FCF não aplicáveis.</div>
@@ -556,9 +530,9 @@ function buildValuationFinancial(r, v) {
   <div class="section-header">🏦 Rentabilidade</div>
   <div class="section-body">
     <div class="gauge-row">
-      <div class="gauge-card"><div class="gauge-title">ROE</div>${roeGauge}<div class="gauge-note">Return on Equity</div></div>
-      <div class="gauge-card"><div class="gauge-title">P/E</div>${peGauge}<div class="gauge-note">Preço ÷ Lucro/Ação</div></div>
-      <div class="gauge-card"><div class="gauge-title">P/TBV</div>${ptbvGauge}<div class="gauge-note">Preço ÷ Tangible BV</div></div>
+      ${roeGauge}
+      ${peGauge}
+      ${ptbvGauge}
     </div>
     <div class="kpi-strip">
       <div class="kpi-pill"><span class="kpi-pill-label">TBV/Ação</span><span class="kpi-pill-val">${fmt.$(v.tbv_ps)}</span></div>
@@ -768,7 +742,7 @@ function buildTablePanel(r) {
     {label:'Eco. Profit / Ação TTM', fn: rw => rw.econ_profit_ps},
     {label:'Cap. Investido / Ação',  fn: rw => rw.invested_cap_ps},
     {label:'ROIC',                   fn: rw => rw.roic, pct:true},
-    {label:'ROIC ex-Goodwill',       fn: rw => rw.roic_ex_gw, pct:true},
+    {label:'ROIC ex-Goodwill',       fn: rw => rw.roic_ex_gw != null && Math.abs(rw.roic_ex_gw) < 100 ? rw.roic_ex_gw : null, pct:true},
     {label:'ROIIC (1 ano)',          fn: rw => rw.roiic_1y, pct:true},
     {label:'WACC',                   fn: rw => rw.wacc, pct:true},
     {label:'Tax Rate Efetivo',       fn: rw => rw.eff_tax, pct:true},

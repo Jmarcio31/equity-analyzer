@@ -300,3 +300,30 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', -apple-s
   color: var(--text);
   white-space: pre-line;
 }
+
+/* ─── Gauge card integrado ───────────────────────────────────────────────────── */
+.gauge-bottom {
+  text-align: center;
+  padding: 4px 8px 0;
+}
+.gauge-current {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+  margin-bottom: 6px;
+}
+.gauge-hist-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.gauge-hist-label {
+  font-size: 11px;
+  color: var(--text3);
+}
+.gauge-hist-delta {
+  font-size: 12px;
+  font-weight: 700;
+}

@@ -145,11 +145,13 @@ def build_rows(inc_raw, bs_raw, cf_raw, quarters=20):
         eq=fv(b.get("totalStockholdersEquity")) or 1
         ca=fv(b.get("totalCurrentAssets")); cl=fv(b.get("totalCurrentLiabilities"))
         ppe=fv(b.get("propertyPlantEquipmentNet")); ta=fv(b.get("totalAssets")) or 1
-        nwc=(ca-cash)-(cl-debt); ic=nwc+ppe+gw+ia; icx=max(ic-gw,1)
+        nwc=(ca-cash)-(cl-debt); ic=nwc+ppe+gw+ia; icx=ic-gw
         rt=max(0.05,min(tax/ebt if ebt>0 else 0.21,0.30))
         np2=ebit*(1-rt); dr=debt/(debt+abs(eq)) if (debt+abs(eq)) else 0; er=1-dr
         kd=abs(intr)/debt if debt else 0; wacc=er*0.10+dr*kd*(1-rt)
-        roic=np2/ic if ic else 0; rx=np2/icx if icx else 0; ep=np2-wacc*icx
+        roic=np2/ic if ic and abs(ic)>1e6 else 0
+        rx=np2/icx if icx and icx>1e6 else None
+        ep=np2-wacc*icx if icx and icx>1e6 else None
         fcf=ocf-abs(cap)-sbc; os2=ocf-sbc; dp=abs(div); ra=abs(rep)
         def ps(v): return v/sh if sh else 0
         row={"date":ds,"shares":sh,
