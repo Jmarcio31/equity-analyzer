@@ -133,9 +133,9 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
 
 /* MS TABLE */
 .ms-table-wrap { overflow-x: auto; }
-.ms-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.ms-table th { text-align: left; padding: 9px 14px; color: var(--text3); font-weight: 500; border-bottom: 1px solid var(--border); white-space: nowrap; }
-.ms-table td { padding: 9px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.ms-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ms-table th { text-align: left; padding: 10px 14px; color: var(--text3); font-weight: 500; border-bottom: 1px solid var(--border); white-space: nowrap; font-size: 12px; }
+.ms-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; font-size: 14px; }
 .ms-table tr:last-child td { border-bottom: none; }
 .ms-bar-bg { width: 100px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; position: relative; }
 .ms-bar-fill { height: 100%; border-radius: 3px; position: absolute; top: 0; }
@@ -258,7 +258,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
 /* ── Glossário ── */
 .glossary-wrap { display: flex; flex-direction: column; gap: 28px; }
 .glossary-cat-title {
-  font-size: 13px; font-weight: 700; color: var(--accent);
+  font-size: 14px; font-weight: 700; color: var(--accent);
   text-transform: uppercase; letter-spacing: 0.5px;
   margin-bottom: 14px; padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
@@ -271,10 +271,10 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
   align-items: start;
 }
 .glossary-term {
-  font-weight: 700; font-size: 13px; color: var(--text);
+  font-weight: 700; font-size: 15px; color: var(--text);
   padding-top: 1px;
 }
-.glossary-def { font-size: 13px; color: var(--text2); line-height: 1.6; }
+.glossary-def { font-size: 14px; color: var(--text2); line-height: 1.7; }
 @media (max-width: 700px) {
   .glossary-item { grid-template-columns: 1fr; gap: 6px; }
 }
@@ -474,7 +474,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
 .tooltip-modal {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.55);
+  background: rgba(0,0,0,0.40);
   z-index: 9999;
   display: flex;
   align-items: center;
@@ -482,14 +482,14 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
   padding: 24px;
 }
 .tooltip-modal-inner {
-  background: var(--surface);
+  background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 24px 28px;
-  max-width: 480px;
+  padding: 28px 32px;
+  max-width: 520px;
   width: 100%;
   position: relative;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
 }
 .tooltip-modal-close {
   position: absolute;
@@ -500,9 +500,9 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
 }
 .tooltip-modal-close:hover { color: var(--text); }
 .tooltip-modal-body {
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--text2);
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--text);
   white-space: pre-line;
 }
 .tooltip-modal-body strong { color: var(--text); }

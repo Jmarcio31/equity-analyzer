@@ -317,8 +317,8 @@ function buildValuationPanelFinancial(r, v) {
       Métricas: ROE · P/TBV · NIM · Eficiência · Payout.
     </div>
     <div class="valuation-grid">${kpiHtml}</div>
-    <h3 style="margin-bottom:8px;font-size:13px;color:var(--text2)">Margem de Segurança — Fórmula de Graham (adaptada)</h3>
-    <p style="font-size:11px;color:var(--text3);margin-bottom:12px">
+    <h3 style="margin-bottom:10px;font-size:15px;color:var(--text);font-weight:600">Margem de Segurança — Fórmula de Graham (adaptada)</h3>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:14px">
       V = EPS × (8,5 + 2 × CAGR%) × 4,4 / Y &nbsp;·&nbsp; EPS = Lucro Líquido/Ação &nbsp;·&nbsp; CAGR = crescimento de receita (proxy)
     </p>
     <div class="ms-table-wrap"><table class="ms-table">
@@ -420,8 +420,8 @@ function buildValuationPanel(r, v) {
 
   return `
     <div class="valuation-grid">${kpiHtml}</div>
-    <h3 style="margin-bottom:8px;font-size:13px;color:var(--text2)">Margem de Segurança — Fórmula de Graham</h3>
-    <p style="font-size:11px;color:var(--text3);margin-bottom:12px">V = EPS × (8,5 + 2 × CAGR%) × 4,4 / Y &nbsp;·&nbsp; MS = (V − Preço) / V</p>
+    <h3 style="margin-bottom:10px;font-size:15px;color:var(--text);font-weight:600">Margem de Segurança — Fórmula de Graham</h3>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:14px">V = EPS × (8,5 + 2 × CAGR%) × 4,4 / Y &nbsp;·&nbsp; MS = (V − Preço) / V</p>
     <div class="ms-table-wrap"><table class="ms-table">
       <thead><tr><th>Métrica</th><th>EPS/Ação TTM${tooltip('EBIT')}</th><th>CAGR</th><th>Graham (V)${tooltip('Margem de Segurança')}</th><th>Margem de Segurança</th><th></th></tr></thead>
       <tbody>${msRows}</tbody>
