@@ -573,7 +573,34 @@ function buildValuationFinancial(r, v) {
 
 // ─── Aba Gráficos ─────────────────────────────────────────────────────────────
 function buildChartsPanel(r) {
-  const id = r.ticker;
+  const id  = r.ticker;
+  const fin = r.valuation?.is_financial;
+
+  if (fin) {
+    // Gráficos específicos para instituições financeiras
+    return `
+      <div class="chart-card chart-card-wide">
+        <div class="chart-header">
+          <div class="chart-title">📈 Preço × Book Value por Ação</div>
+          <div class="chart-toggles" id="tog-${id}">
+            <label class="tog-btn tog-active" data-metric="bv"><span class="tog-dot" style="background:#4f7cff"></span>Book Value/ação</label>
+            <label class="tog-btn tog-active" data-metric="tbv"><span class="tog-dot" style="background:#22c55e"></span>Tang. Book Value/ação</label>
+            <label class="tog-btn" data-metric="ni"><span class="tog-dot" style="background:#f59e0b"></span>Lucro Líq./ação</label>
+          </div>
+        </div>
+        <canvas style="max-height:320px" id="ch-price-${id}"></canvas>
+      </div>
+      <div class="charts-grid">
+        <div class="chart-card"><div class="chart-title">ROE — Retorno sobre Patrimônio</div><canvas class="chart-canvas" id="ch-roe-${id}"></canvas></div>
+        <div class="chart-card"><div class="chart-title">Eficiência Operacional</div><canvas class="chart-canvas" id="ch-eff-${id}"></canvas></div>
+        <div class="chart-card"><div class="chart-title">P/TBV Histórico</div><canvas class="chart-canvas" id="ch-ptbv-${id}"></canvas></div>
+        <div class="chart-card"><div class="chart-title">P/E Histórico</div><canvas class="chart-canvas" id="ch-pe-${id}"></canvas></div>
+        <div class="chart-card"><div class="chart-title">Book Value & TBV por Ação</div><canvas class="chart-canvas" id="ch-bv-${id}"></canvas></div>
+        <div class="chart-card"><div class="chart-title">Dividendos & Cash Retornado / Ação</div><canvas class="chart-canvas" id="ch-div-${id}"></canvas></div>
+      </div>`;
+  }
+
+  // Gráficos padrão (não-financeiras)
   return `
     <div class="chart-card chart-card-wide">
       <div class="chart-header">
@@ -601,15 +628,17 @@ function buildChartsPanel(r) {
 function renderCharts(ticker) {
   const r = allResults.find(x => x.ticker === ticker);
   if (!r) return;
-  const color  = r.color || ['#4f7cff','#22c55e','#f59e0b'][allResults.indexOf(r) % 3];
-  const rows   = r.rows;
+  const color = r.color || ['#4f7cff','#22c55e','#f59e0b'][allResults.indexOf(r) % 3];
+  const rows  = r.rows;
+  const val   = r.valuation;
   const labels = rows.map(rw => rw.date.slice(0,7));
-  const val    = r.valuation;
 
-  function makeChart(id, datasets, pct=false) {
+  function makeChart(id, datasets, opts={}) {
     const canvas = document.getElementById(id);
     if (!canvas) return;
     if (chartInstances[id]) chartInstances[id].destroy();
+    const isPct = opts.pct;
+    const isX   = opts.x;
     chartInstances[id] = new Chart(canvas, {
       type: 'line', data: {labels, datasets},
       options: {
@@ -620,7 +649,9 @@ function renderCharts(ticker) {
         },
         scales: {
           x: {ticks: {color:'#64748b', maxTicksLimit:8, font:{size:9}}, grid: {color:'#2d3150'}},
-          y: {ticks: {color:'#64748b', font:{size:9}, callback: v => pct ? (v*100).toFixed(0)+'%' : '$'+v.toFixed(1)}, grid: {color:'#2d3150'}}
+          y: {ticks: {color:'#64748b', font:{size:9},
+            callback: v => isPct ? (v*100).toFixed(0)+'%' : isX ? v.toFixed(1)+'x' : '$'+v.toFixed(1)
+          }, grid: {color:'#2d3150'}}
         }
       }
     });
@@ -630,23 +661,118 @@ function renderCharts(ticker) {
     borderWidth:2, pointRadius:0, tension:0.3, fill
   });
 
-  makeChart(`ch-ebit-${ticker}`,  [ds('EBIT/ação', rows.map(r=>r.ebit_ps), color, true)]);
-  makeChart(`ch-fcf-${ticker}`,   [ds('FCF-SBC/ação', rows.map(r=>r.fcf_sbc_ps), '#22c55e', true)]);
-  makeChart(`ch-ep-${ticker}`,    [ds('Eco.Profit/ação', rows.map(r=>r.econ_profit_ps), '#a78bfa', true)]);
-  makeChart(`ch-roic-${ticker}`,  [ds('ROIC', rows.map(r=>r.roic), color), ds('WACC', rows.map(r=>r.wacc), '#ef4444')], true);
-  makeChart(`ch-rev-${ticker}`,   [ds('Receita/ação', rows.map(r=>r.revenue_ps), '#f59e0b', true)]);
-  makeChart(`ch-lev-${ticker}`,   [ds('Net Debt/FCF', rows.map(r=>r.net_debt_fcf), '#f87171')]);
-  renderPriceChart(ticker, r, color);
+  if (val?.is_financial) {
+    // ── Gráficos para financeiras ──────────────────────────────────────────
+    // ROE series calculado por trimestre
+    const roeSeries = rows.map(rw => {
+      const ni = rw.net_income_ps; const eq = rw.equity_abs; const sh = rw.shares;
+      return (ni != null && eq && sh) ? (ni * sh) / eq : null;
+    });
+    // Book Value e TBV por ação
+    const bvSeries  = rows.map(rw => rw.shares ? rw.equity_abs / rw.shares : null);
+    const tbvSeries = rows.map(rw => rw.shares ? (rw.equity_abs - (rw.goodwill_abs||0)) / rw.shares : null);
+    // P/TBV e P/E histórico (usando preço atual — limitação: não temos preço histórico trimestral)
+    const price = val.price || r.price;
+    const ptbvSeries = tbvSeries.map(v => v && v > 0 ? price/v : null);
+    const peSeries   = rows.map(rw => rw.net_income_ps && rw.net_income_ps > 0 ? price/rw.net_income_ps : null);
+    // Eficiência
+    const effSeries  = rows.map(rw => rw.opex_rev);
+    // Payout
+    const payoutSeries = rows.map(rw => rw.net_income_ps && rw.net_income_ps > 0 ? rw.dividend_ps / rw.net_income_ps : null);
+
+    makeChart(`ch-roe-${ticker}`,  [ds('ROE', roeSeries, color, true)], {pct:true});
+    makeChart(`ch-eff-${ticker}`,  [ds('Eficiência', effSeries, '#f59e0b', true)], {pct:true});
+    makeChart(`ch-ptbv-${ticker}`, [ds('P/TBV', ptbvSeries, '#a78bfa')], {x:true});
+    makeChart(`ch-pe-${ticker}`,   [ds('P/E', peSeries, '#fb923c')], {x:true});
+    makeChart(`ch-bv-${ticker}`,   [ds('Book Value/ação', bvSeries, '#4f7cff', true), ds('TBV/ação', tbvSeries, '#22c55e')]);
+    makeChart(`ch-div-${ticker}`,  [ds('Dividendos/ação', rows.map(rw=>rw.dividend_ps), '#22c55e', true),
+                                    ds('Cash Retornado/ação', rows.map(rw=>rw.cash_returned_ps), '#f59e0b')]);
+    renderPriceChartFin(ticker, r, color, bvSeries, tbvSeries);
+    const togArea = document.getElementById(`tog-${ticker}`);
+    if (togArea) {
+      togArea.querySelectorAll('.tog-btn').forEach(btn => {
+        btn.addEventListener('click', () => { btn.classList.toggle('tog-active'); renderPriceChartFin(ticker,r,color,bvSeries,tbvSeries); });
+      });
+    }
+  } else {
+    // ── Gráficos padrão (não-financeiras) ─────────────────────────────────
+    makeChart(`ch-ebit-${ticker}`,  [ds('EBIT/ação', rows.map(r=>r.ebit_ps), color, true)]);
+    makeChart(`ch-fcf-${ticker}`,   [ds('FCF-SBC/ação', rows.map(r=>r.fcf_sbc_ps), '#22c55e', true)]);
+    makeChart(`ch-ep-${ticker}`,    [ds('Eco.Profit/ação', rows.map(r=>r.econ_profit_ps), '#a78bfa', true)]);
+    makeChart(`ch-roic-${ticker}`,  [ds('ROIC', rows.map(r=>r.roic), color), ds('WACC', rows.map(r=>r.wacc), '#ef4444')], {pct:true});
+    makeChart(`ch-rev-${ticker}`,   [ds('Receita/ação', rows.map(r=>r.revenue_ps), '#f59e0b', true)]);
+    makeChart(`ch-lev-${ticker}`,   [ds('Net Debt/FCF', rows.map(r=>r.net_debt_fcf), '#f87171')]);
+    renderPriceChart(ticker, r, color);
+    const togArea = document.getElementById(`tog-${ticker}`);
+    if (togArea) {
+      togArea.querySelectorAll('.tog-btn').forEach(btn => {
+        btn.addEventListener('click', () => { btn.classList.toggle('tog-active'); renderPriceChart(ticker,r,color); });
+      });
+    }
+  }
+}
+
+// ── Gráfico de preço para financeiras (BV + TBV como métricas) ───────────────
+function renderPriceChartFin(ticker, r, color, bvSeries, tbvSeries) {
+  const canvas = document.getElementById(`ch-price-${ticker}`);
+  if (!canvas) return;
+  const priceHist = r.price_history || [];
+  const rows = r.rows;
+  const qDates = rows.map(rw => rw.date);
 
   const togArea = document.getElementById(`tog-${ticker}`);
-  if (togArea) {
-    togArea.querySelectorAll('.tog-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        btn.classList.toggle('tog-active');
-        renderPriceChart(ticker, r, color);
-      });
+  const active  = new Set();
+  if (togArea) togArea.querySelectorAll('.tog-btn.tog-active').forEach(b => active.add(b.dataset.metric));
+
+  const priceDataXY = priceHist.map(p => ({x: p.date, y: p.close}));
+  const datasets = [{
+    label:'Preço', data: priceDataXY,
+    borderColor: color, backgroundColor: color+'18',
+    borderWidth:2, pointRadius:0, tension:0.2, fill:true, yAxisID:'yPrice', order:0
+  }];
+
+  const metricMap = {
+    bv:  {label:'Book Value/ação', color:'#4f7cff',  data: bvSeries},
+    tbv: {label:'TBV/ação',        color:'#22c55e',  data: tbvSeries},
+    ni:  {label:'Lucro Líq./ação', color:'#f59e0b',  data: rows.map(rw=>rw.net_income_ps)},
+  };
+  for (const [key, m] of Object.entries(metricMap)) {
+    if (!active.has(key)) continue;
+    datasets.push({
+      label: m.label, data: m.data.map((v,i) => ({x: qDates[i], y: v})),
+      borderColor: m.color, backgroundColor:'transparent',
+      borderWidth:1.5, borderDash:[5,3], pointRadius:3, pointBackgroundColor:m.color,
+      tension:0.3, fill:false, yAxisID:'yMetric', order:1
     });
   }
+
+  if (chartInstances[`ch-price-${ticker}`]) chartInstances[`ch-price-${ticker}`].destroy();
+  chartInstances[`ch-price-${ticker}`] = new Chart(canvas, {
+    type:'line', data:{datasets},
+    options:{
+      responsive:true, maintainAspectRatio:true,
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, labels:{color:'#94a3b8', font:{size:11}, usePointStyle:true}},
+        tooltip:{callbacks:{label: ctx => {
+          const v = ctx.parsed.y;
+          return v == null ? null : `${ctx.dataset.label}: $${v.toFixed(2)}`;
+        }}}
+      },
+      scales:{
+        x:{type:'time', time:{unit:'month', displayFormats:{month:'MMM yy'}},
+           ticks:{color:'#64748b', maxTicksLimit:10, font:{size:9}}, grid:{color:'#2d3150'}},
+        yPrice:{type:'linear', position:'left',
+                ticks:{color:'#94a3b8', font:{size:9}, callback:v=>'$'+v.toFixed(0)},
+                grid:{color:'#2d3150'},
+                title:{display:true, text:'Preço ($)', color:'#64748b', font:{size:10}}},
+        yMetric:{type:'linear', position:'right',
+                 ticks:{color:'#64748b', font:{size:9}, callback:v=>'$'+v.toFixed(1)},
+                 grid:{drawOnChartArea:false},
+                 title:{display:true, text:'Valor/Ação ($)', color:'#64748b', font:{size:10}}}
+      }
+    }
+  });
 }
 
 function renderPriceChart(ticker, r, color) {
