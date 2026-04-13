@@ -39,12 +39,18 @@ window.TOOLTIPS = {
   'Treasury 10Y':     'Yield do Treasury americano de 10 anos. Taxa livre de risco na Fórmula de Graham.',
   'ROE':              'Return on Equity — Lucro Líquido TTM ÷ Patrimônio Líquido.',
   'P/E':              'Preço ÷ Lucro Líquido por ação (TTM).',
-  'P/TBV':            'Preço ÷ Tangible Book Value por ação. TBV = PL − Goodwill.',
+  'P/TBV':            'Preço ÷ Tangible Book Value por ação.\nTBV = Patrimônio Líquido − Goodwill.\n\n📐 Gordon implícito:\nP/TBV justo = (ROE − g) ÷ (Ke − g)\nAssumindo g ≈ 0: P/TBV justo ≈ ROE ÷ Ke\n\nEx: ROE = 15%, Ke = 10% → P/TBV justo = 1,5x\nP/TBV atual > justo → prêmio; < justo → desconto',
   'EBIT':             'Earnings Before Interest and Taxes — lucro operacional (TTM).',
   'FCF − SBC':        'Free Cash Flow ajustado por Stock-Based Compensation.\nFórmula: OCF − |Capex| − SBC.',
   'Economic Profit':  'Lucro Econômico (EVA®).\nFórmula: NOPAT − (WACC × Capital Investido ex-Goodwill).',
   'Dividendos':       'Dividendos pagos por ação (TTM).',
   'Margem de Segurança': 'Fórmula de Graham (1974):\nV = EPS × (8,5 + 2×g%) × (4,4÷Y%)\nMS = (V − Preço) ÷ V',
+  'Eficiência': 'Cost-to-Income Ratio — Despesas Operacionais ÷ Receita Total.\n\n< 55% → Excelente\n55–65% → Bom\n> 65% → Pressão operacional\n\nBancos de varejo eficientes ficam entre 40–55%.\nMédia global do setor: ~58%.',
+  'Yield de ativos (proxy NIM)': 'Receita Total ÷ Total de Ativos.\n\nUsado como proxy do NIM (Net Interest Margin) porque a Alpha Vantage não fornece a Receita Líquida de Juros separada.\n\nNIM real = Juros Recebidos Líquidos ÷ Ativos Rentáveis\n\n⚠ Esta proxy superestima o NIM pois inclui receitas de tarifas e serviços. Use para analisar tendência, não valor absoluto.',
+  'ROE': 'Return on Equity — Lucro Líquido TTM ÷ Patrimônio Líquido.\n\nPrincipal métrica de rentabilidade para bancos.\nROE > Ke (~10%) = criação de valor para o acionista.\nROE < Ke = destruição de valor mesmo com lucro positivo.',
+  'P/E': 'Preço ÷ Lucro Líquido por ação (LPA TTM).\n\nPara financeiras, é mais informativo que EV/EBIT porque a estrutura de capital é parte do negócio.\n\nP/E histórico calculado com o preço da data de cada trimestre.',
+  'Payout': 'Dividendos Pagos ÷ Lucro Líquido TTM.\n\nBancos maduros (JPM, ITUB): 30–50%\nBancos de crescimento (NU): tendem a reter mais capital.\n\nPayout > 100% = pagando mais do que ganha (insustentável).',
+  'CAGR (Graham financeiras)': 'Para instituições financeiras, o CAGR usado na Fórmula de Graham é baseado no crescimento do Lucro por Ação (LPA/EPS), não da receita.\n\nIsso é mais adequado pois reflete o crescimento real para o acionista, e a receita de banco não é comparável à receita operacional de empresas não-financeiras.',
 };
 
 // ─── Fallback seguro para tooltip (evita ReferenceError) ─────────────────────
@@ -553,7 +559,7 @@ function buildValuationFinancial(r, v) {
     <div class="kpi-strip">
       <div class="kpi-pill"><span class="kpi-pill-label">TBV/Ação</span><span class="kpi-pill-val">${fmt.$(v.tbv_ps)}</span></div>
       <div class="kpi-pill"><span class="kpi-pill-label">BV/Ação</span><span class="kpi-pill-val">${fmt.$(v.bv_ps)}</span></div>
-      <div class="kpi-pill"><span class="kpi-pill-label">Eficiência</span><span class="kpi-pill-val ${v.efficiency < 0.5 ? 'green' : 'red'}">${fmt.pct(v.efficiency)}</span></div>
+      <div class="kpi-pill"><span class="kpi-pill-label">Eficiência ${tooltip('Eficiência')}</span><span class="kpi-pill-val ${v.efficiency < 0.5 ? 'green' : v.efficiency < 0.65 ? 'yellow' : 'red'}">${fmt.pct(v.efficiency)}</span></div>
       <div class="kpi-pill"><span class="kpi-pill-label">Yield de ativos (proxy NIM) ${tooltip('Yield de ativos (proxy NIM)')}</span><span class="kpi-pill-val">${fmt.pct(v.nim_proxy)}</span></div>
       <div class="kpi-pill"><span class="kpi-pill-label">Payout</span><span class="kpi-pill-val">${fmt.pct(v.payout)}</span></div>
       <div class="kpi-pill"><span class="kpi-pill-label">Div Yield ${tooltip('Div Yield')}</span><span class="kpi-pill-val">${fmt.pct(v.div_yield)}</span></div>
@@ -904,9 +910,12 @@ function buildTablePanel(r) {
   const dates   = rows.map(rw => rw.date.slice(0,7));
   // Alterna zebra nas colunas de data por ano
   const thHtml  = dates.map((d,i) => {
-    const yr = d.slice(0,4);
-    const cls = parseInt(yr) % 2 === 0 ? 'qtr-header qtr-even' : 'qtr-header qtr-odd';
-    return `<th class="${cls}">${d}</th>`;
+    const yr = parseInt(d.slice(0,4));
+    const cls = yr % 2 === 0 ? 'qtr-header qtr-even' : 'qtr-header qtr-odd';
+    // Destaca o último trimestre de cada ano (Q4) com borda esquerda
+    const isQ4 = d.slice(5,7) === '12';
+    const style = isQ4 ? ' style="border-left:2px solid var(--border2)"' : '';
+    return `<th class="${cls}"${style}>${d.slice(0,4)}<br><span class="qtr-sub">${d.slice(5,7)}</span></th>`;
   }).join('');
   const tbodyHtml = metrics.map(m => {
     const cells = rows.map((rw, i) => {
@@ -992,9 +1001,10 @@ function buildGlossaryPanel() {
     ]},
     { title: '🏦 Financeiras', items: [
       {term:'ROE', def:'Return on Equity — Lucro Líquido ÷ Patrimônio Líquido. Principal métrica de rentabilidade para bancos, substitui o ROIC.'},
-      {term:'P/TBV', def:'Preço ÷ Tangible Book Value/ação. TBV = PL − Goodwill. Múltiplo fundamental para bancos. < 1x pode indicar desconto relevante.'},
-      {term:'NIM', def:'Net Interest Margin — Receita Líquida de Juros ÷ Ativos Rentáveis. Aqui calculado como proxy (receita total ÷ total de ativos).'},
-      {term:'Eficiência', def:'Despesas Operacionais ÷ Receita Total. Quanto menor, mais eficiente. Bancos bem geridos: abaixo de 50%.'},
+      {term:'P/TBV', def:'Preço ÷ Tangible Book Value/ação. TBV = PL − Goodwill. Múltiplo fundamental para bancos. Gordon implícito: P/TBV justo ≈ ROE ÷ Ke. Ex: ROE 15%, Ke 10% → P/TBV justo 1,5x.'},
+      {term:'CAGR (Graham financeiras)', def:'Para bancos, o crescimento usado na Fórmula de Graham é o CAGR do LPA (Lucro por Ação), não da receita. Isso reflete o crescimento real para o acionista e evita distorções típicas de receita bancária (provisões, NII).'},
+      {term:'Yield de ativos (proxy NIM)', def:'Receita Total ÷ Total de Ativos. Proxy do NIM pois a AV não fornece NII separado. NIM real = Juros Recebidos Líquidos ÷ Ativos Rentáveis. Esta proxy superestima o NIM real — use para tendência, não valor absoluto.'},
+      {term:'Eficiência (Cost-to-Income)', def:'Despesas Operacionais ÷ Receita Total. < 55% → Excelente · 55–65% → Bom · > 65% → Pressão operacional. Bancos de varejo eficientes ficam entre 40–55%.'},
     ]},
   ];
 

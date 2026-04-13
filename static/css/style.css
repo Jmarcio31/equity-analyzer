@@ -344,3 +344,38 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', -apple-s
 .data-table tr:hover .metric-label {
   background: var(--surface2) !important;
 }
+
+/* ─── Tabela: cabeçalhos de data mais visíveis ──────────────────────────────── */
+.qtr-odd  {
+  background: #1a2035 !important;
+  color: #c8d6f0 !important;
+  font-size: 12px;
+  font-weight: 600;
+}
+.qtr-even {
+  background: #0f1624 !important;
+  color: #a0b4d4 !important;
+  font-size: 12px;
+  font-weight: 600;
+}
+.qtr-sub {
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--text3);
+  letter-spacing: 0.3px;
+}
+.metric-label {
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--text) !important;
+  background: var(--surface2) !important;
+  border-right: 2px solid var(--border2) !important;
+  padding-left: 16px !important;
+}
+.data-table tr:nth-child(odd) td:first-child {
+  background: var(--surface) !important;
+}
+.data-table tr:nth-child(even) td:first-child {
+  background: var(--surface2) !important;
+}
+.yellow { color: var(--yellow); }
