@@ -58,9 +58,9 @@ def compute_valuation(rows, price, treasury_yield=0.0428):
         "ep_yield":   last.get("econ_profit_abs",0) / mktcap if mktcap else None,
         "div_yield":  last.get("dividend_ps",0) / price    if price   else None,
         "tir":        last.get("ebit_abs",0) / ev          if ev      else None,
-        "roic_last":   last.get("roic") if last.get("roic") is not None and abs(last.get("roic",0)) < 5 else None,
+        "roic_last":   last.get("roic",0),
         "wacc_last":   last.get("wacc",0),
-        "econ_spread": (last.get("roic",0) - last.get("wacc",0)) if last.get("roic") is not None and abs(last.get("roic",0)) < 5 else None,
+        "econ_spread": last.get("roic",0) - last.get("wacc",0),
     }
 
 

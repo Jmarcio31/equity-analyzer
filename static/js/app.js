@@ -21,7 +21,7 @@ function fmtDate(d) {
 
 // ─── Definições de tooltip ────────────────────────────────────────────────────
 window.TOOLTIPS = {
-  'ROIC':             'Return on Invested Capital.\n\nFórmula: NOPAT ÷ Capital Investido ex-Goodwill\nNOPAT = EBIT × (1 − Tax Rate efetivo, cap 30%)\n\nExclui goodwill para refletir retorno sobre ativos tangíveis.',
+  'ROIC':             'Return on Invested Capital.\n\nFórmula: NOPAT ÷ Capital Investido ex-Goodwill\nNOPAT = EBIT × (1 − Tax Rate efetivo, cap 30%)\nCapital ex-GW = NWC + PPE + Intangíveis\n\n⚠ Quando o Capital Investido é muito pequeno (próximo de zero) ou negativo — situação comum em empresas capital-light como AAPL — o ROIC pode atingir centenas ou milhares de porcento.\n\nIsso não é erro: significa que a empresa gera lucro operacional com mínimo capital imobilizado (vantagem competitiva real). Mas o número perde comparabilidade entre trimestres.\n\nO gauge fixa o ponteiro no topo e exibe o valor real com indicador ⚠ nesses casos.',
   'WACC':             'Weighted Average Cost of Capital.\n\nFórmula: Ke × We + Kd × (1−t) × Wd\nKe (custo do equity) = 10% fixo\nKd = Despesa Financeira ÷ Dívida Total',
   'Spread ROIC−WACC': 'ROIC − WACC. Spread positivo = empresa criando valor econômico acima do custo de capital.',
   'EP / Ação':        'Economic Profit por ação (TTM).\n\nFórmula: NOPAT − (WACC × Capital Investido ex-Goodwill)',
@@ -109,7 +109,11 @@ function makeGaugeCard(title, tooltipKey, value, histValues, min, max, unit, not
     </div>`;
   }
 
-  const pct = Math.max(0, Math.min(1, (value - min) / (max - min)));
+  // Detecta off-scale: valor fora da escala do gauge
+  const isOffScale = value > max * 2 || value < min * 2;
+  // Para o gauge, fixa no topo/fundo; exibe o valor real no texto
+  const displayValue = isOffScale ? (value > 0 ? max : min) : value;
+  const pct = Math.max(0, Math.min(1, (displayValue - min) / (max - min)));
   const cx = 70, cy = 68, r = 52;
   const th = thresholds || [{pct:0.33,color:'#ef4444'},{pct:0.66,color:'#f59e0b'},{pct:1,color:'#22c55e'}];
 
@@ -157,10 +161,13 @@ function makeGaugeCard(title, tooltipKey, value, histValues, min, max, unit, not
       <text x="124" y="94" text-anchor="middle" font-size="7" fill="var(--text3)">${maxLbl}</text>
     </svg>
     <div class="gauge-bottom">
-      <div class="gauge-current">${dispVal}</div>
+      <div class="gauge-current">
+        ${dispVal}
+        ${isOffScale ? `<span class="gauge-offscale-badge" onclick="showTooltipModal(this)" data-tip="⚠ Valor fora da escala do gauge.&#10;&#10;O Capital Investido deste trimestre é muito pequeno ou próximo de zero, tornando o ROIC muito elevado.&#10;&#10;O ponteiro está fixado no topo mas o valor exibido é o real. Clique no ⓘ do título para mais detalhes.">⚠</span>` : ''}
+      </div>
       ${avg != null ? `<div class="gauge-hist-row">
         <span class="gauge-hist-label">Média histórica: ${fmtVal(avg)}</span>
-        <span class="gauge-hist-delta" style="color:${dColor}">${arrow} ${pctStr}</span>
+        ${Math.abs(pctDiff||0) < 10 ? `<span class="gauge-hist-delta" style="color:${dColor}">${arrow} ${pctStr}</span>` : `<span class="gauge-hist-delta" style="color:#94a3b8" title="Variação muito elevada — possível artefato de denominador pequeno">—</span>`}
       </div>` : ''}
     </div>
     <div class="gauge-note">${note}</div>
@@ -436,7 +443,7 @@ function buildValuation(r, v, color) {
   const revSeries   = rows.map(rw => rw.revenue_ps);
 
   // Gauges integrados com histórico
-  const roicGauge   = makeGaugeCard('ROIC',           'ROIC',           v.roic_last!=null&&Math.abs(v.roic_last)<5?v.roic_last:null, roicSeries.filter(x=>x!=null&&Math.abs(x)<5),   0,    0.5,  '%', 'Return on Invested Capital');
+  const roicGauge   = makeGaugeCard('ROIC',           'ROIC',           v.roic_last,   roicSeries,   0,    0.5,  '%', 'Return on Invested Capital');
   const waccGauge   = makeGaugeCard('WACC',           'WACC',           v.wacc_last,   waccSeries,   0,    0.2,  '%', 'Custo médio de capital',
     [{pct:0.33,color:'#22c55e'},{pct:0.66,color:'#f59e0b'},{pct:1,color:'#ef4444'}], true);
   const spreadGauge = makeGaugeCard('Spread ROIC−WACC','Spread ROIC−WACC',v.econ_spread,spreadSeries,-0.1, 0.5,  '%', 'Criação de valor econômico',
