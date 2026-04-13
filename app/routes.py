@@ -136,6 +136,12 @@ def analyze():
             start_date    = rows[0]["date"] if rows else None
             price_history = db.load_price_history(symbol, start_date)
 
+            # Fallback: se price==0 (ex: reload falhou), usa último preço do histórico
+            if not price and price_history:
+                last_ph = price_history[-1]
+                price      = last_ph.get("close", 0)
+                price_date = last_ph.get("date")
+
             is_fin = symbol in FINANCIAL_TICKERS
             val = compute_valuation_financial(rows, price, treasury) if is_fin else compute_valuation(rows, price, treasury)
             ticker_info = next((t for t in TICKERS if t["symbol"] == symbol), {})
