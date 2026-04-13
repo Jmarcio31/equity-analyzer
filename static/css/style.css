@@ -327,3 +327,20 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', -apple-s
   font-size: 12px;
   font-weight: 700;
 }
+
+/* ─── Tabela trimestres: zebra de anos e labels ──────────────────────────────── */
+.qtr-odd  { background: var(--surface2) !important; color: var(--text2); }
+.qtr-even { background: var(--surface3) !important; color: var(--text); }
+
+.metric-label {
+  font-weight: 500;
+  color: var(--text2);
+  background: var(--surface) !important;
+  border-right: 2px solid var(--border2) !important;
+}
+.data-table tr:nth-child(even) .metric-label {
+  background: var(--surface2) !important;
+}
+.data-table tr:hover .metric-label {
+  background: var(--surface2) !important;
+}

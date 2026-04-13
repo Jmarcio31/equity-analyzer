@@ -27,8 +27,12 @@ def compute_valuation(rows, price, treasury_yield=0.0428):
     ms_ep   = ms(g_ep,   price)
     ms_div  = ms(g_div,  price)
 
-    valid  = [v for v in [ms_fcf, ms_ep, ms_div] if v is not None]
-    avg_ms = sum(valid)/len(valid) if valid else None
+    # avg_ms: usa apenas FCF e Div (mais estáveis); EP é muito volátil e distorce
+    # Só inclui se o valor intrínseco for positivo (graham > 0)
+    valid_ms = []
+    if g_fcf and g_fcf > 0 and ms_fcf is not None: valid_ms.append(ms_fcf)
+    if g_div and g_div > 0 and ms_div is not None: valid_ms.append(ms_div)
+    avg_ms = sum(valid_ms)/len(valid_ms) if valid_ms else None
     shares = last.get("shares", 1)
     mktcap = price * shares
     ev     = mktcap + last.get("total_debt_abs",0) - last.get("cash_abs",0)
@@ -54,9 +58,9 @@ def compute_valuation(rows, price, treasury_yield=0.0428):
         "ep_yield":   last.get("econ_profit_abs",0) / mktcap if mktcap else None,
         "div_yield":  last.get("dividend_ps",0) / price    if price   else None,
         "tir":        last.get("ebit_abs",0) / ev          if ev      else None,
-        "roic_last":   last.get("roic",0),
+        "roic_last":   last.get("roic") if last.get("roic") is not None and abs(last.get("roic",0)) < 5 else None,
         "wacc_last":   last.get("wacc",0),
-        "econ_spread": last.get("roic",0) - last.get("wacc",0),
+        "econ_spread": (last.get("roic",0) - last.get("wacc",0)) if last.get("roic") is not None and abs(last.get("roic",0)) < 5 else None,
     }
 
 
@@ -104,7 +108,7 @@ def compute_valuation_financial(rows, price, treasury_yield=0.0428):
     # Receita líquida de juros = revenue_abs - nonInterestIncome (não temos separado)
     # Usamos revenue como proxy de receita total
     revenue_ttm    = fv(last.get("revenue_abs"))
-    nim_proxy      = revenue_ttm / total_assets if total_assets else 0
+    yield_assets_proxy = revenue_ttm / total_assets if total_assets else 0
 
     # ── Eficiência ────────────────────────────────────────────────────────────
     # Efficiency Ratio = Despesas Operacionais / Receita Total
@@ -123,7 +127,7 @@ def compute_valuation_financial(rows, price, treasury_yield=0.0428):
 
     # ── EPS e crescimento ─────────────────────────────────────────────────────
     eps_ps        = ni_ps
-    eps_cagr      = last.get("_rev_cagr")  # proxy de crescimento de receita
+    eps_cagr      = last.get("_ebit_cagr") or last.get("_fcf_cagr")  # CAGR de EPS/lucro, não de receita
     div_cagr      = last.get("_div_cagr")
 
     # ── Graham adaptado para financeiras ──────────────────────────────────────
@@ -133,7 +137,7 @@ def compute_valuation_financial(rows, price, treasury_yield=0.0428):
             return None
         return eps * (8.5 + 2 * g_pct) * (4.4 / y_pct)
 
-    g_cagr     = pct(last.get("_rev_cagr"))  # crescimento de receita como proxy
+    g_cagr     = pct(last.get("_ebit_cagr") or last.get("_fcf_cagr"))  # CAGR de EPS/lucro
     g_div_cagr = pct(last.get("_div_cagr"))
 
     graham_eps = graham_fin(eps_ps, g_cagr)
@@ -146,8 +150,8 @@ def compute_valuation_financial(rows, price, treasury_yield=0.0428):
     ms_eps = ms(graham_eps, price)
     ms_div = ms(graham_div, price)
 
-    valid  = [v for v in [ms_eps, ms_div] if v is not None]
-    avg_ms = sum(valid) / len(valid) if valid else None
+    valid_fin = [v for v in [ms_eps, ms_div] if v is not None and (v > -5 and v < 5)]
+    avg_ms = sum(valid_fin) / len(valid_fin) if valid_fin else None
 
     # ── P/E ───────────────────────────────────────────────────────────────────
     pe = price / eps_ps if eps_ps and eps_ps > 0 else None
@@ -167,13 +171,13 @@ def compute_valuation_financial(rows, price, treasury_yield=0.0428):
         "eps_ps":  eps_ps,
 
         # Operational
-        "nim_proxy":   nim_proxy,
+        "nim_proxy":   yield_assets_proxy,  # renomeado para yield_assets_proxy internamente
         "efficiency":  efficiency,
         "payout":      payout,
         "div_yield":   div_yield_fin,
         "div_ps":      div_ps,
         "div_cagr":    last.get("_div_cagr"),
-        "eps_cagr":    last.get("_rev_cagr"),
+        "eps_cagr":    last.get("_ebit_cagr") or last.get("_fcf_cagr"),
         "revenue_abs": revenue_ttm,
         "total_assets": total_assets,
         "equity_abs":  equity,

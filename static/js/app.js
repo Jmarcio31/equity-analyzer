@@ -430,7 +430,7 @@ function buildValuation(r, v, color) {
   const revSeries   = rows.map(rw => rw.revenue_ps);
 
   // Gauges integrados com histórico
-  const roicGauge   = makeGaugeCard('ROIC',           'ROIC',           v.roic_last,   roicSeries,   0,    0.5,  '%', 'Return on Invested Capital');
+  const roicGauge   = makeGaugeCard('ROIC',           'ROIC',           v.roic_last!=null&&Math.abs(v.roic_last)<5?v.roic_last:null, roicSeries.filter(x=>x!=null&&Math.abs(x)<5),   0,    0.5,  '%', 'Return on Invested Capital');
   const waccGauge   = makeGaugeCard('WACC',           'WACC',           v.wacc_last,   waccSeries,   0,    0.2,  '%', 'Custo médio de capital',
     [{pct:0.33,color:'#22c55e'},{pct:0.66,color:'#f59e0b'},{pct:1,color:'#ef4444'}], true);
   const spreadGauge = makeGaugeCard('Spread ROIC−WACC','Spread ROIC−WACC',v.econ_spread,spreadSeries,-0.1, 0.5,  '%', 'Criação de valor econômico',
@@ -520,8 +520,8 @@ function buildValuation(r, v, color) {
       </tr></thead>
       <tbody>${msRows}</tbody>
       <tfoot><tr style="font-weight:700;border-top:2px solid var(--border)">
-        <td colspan="4" style="text-align:right;padding-right:14px">Média (FCF + EP + Div)</td>
-        <td class="${colorClass(v.avg_ms)}" style="font-size:16px">${fmt.pct1(v.avg_ms)}</td><td></td>
+        <td colspan="4" style="text-align:right;padding-right:14px">Média (FCF + Div)</td>
+        <td class="${colorClass(v.avg_ms)}" style="font-size:16px">${v.avg_ms != null && v.avg_ms > -3 ? fmt.pct1(v.avg_ms) : '<span style="color:var(--text3);font-size:12px">—</span>'}</td><td></td>
       </tr></tfoot>
     </table></div>
   </div>`;
@@ -535,7 +535,9 @@ function buildValuationFinancial(r, v) {
   const roeGauge   = makeGaugeCard('ROE',  'ROE',  v.roe||0, roeSeries, 0, 0.35, '%', 'Return on Equity');
   const peGauge    = makeGaugeCard('P/E',  'P/E',  Math.min(v.p_e||30,40), null, 0, 40, 'x', 'Preço ÷ Lucro/Ação',
     [{pct:0.375,color:'#22c55e'},{pct:0.625,color:'#f59e0b'},{pct:1,color:'#ef4444'}]);
-  const ptbvGauge  = makeGaugeCard('P/TBV','P/TBV',Math.min(v.p_tbv||2,4), null, 0, 4, 'x', 'Preço ÷ Tangible BV',
+  const gordonPTBV  = v.roe && v.p_tbv ? (v.roe / 0.10).toFixed(2) : null;
+  const ptbvNote    = gordonPTBV ? `P/TBV justo (Gordon): ${gordonPTBV}x (ROE÷Ke=10%)` : 'Preço ÷ Tangible BV';
+  const ptbvGauge   = makeGaugeCard('P/TBV','P/TBV',Math.min(v.p_tbv||2,4), null, 0, 4, 'x', ptbvNote,
     [{pct:0.25,color:'#22c55e'},{pct:0.5,color:'#f59e0b'},{pct:1,color:'#ef4444'}]);
 
   return `
@@ -552,7 +554,7 @@ function buildValuationFinancial(r, v) {
       <div class="kpi-pill"><span class="kpi-pill-label">TBV/Ação</span><span class="kpi-pill-val">${fmt.$(v.tbv_ps)}</span></div>
       <div class="kpi-pill"><span class="kpi-pill-label">BV/Ação</span><span class="kpi-pill-val">${fmt.$(v.bv_ps)}</span></div>
       <div class="kpi-pill"><span class="kpi-pill-label">Eficiência</span><span class="kpi-pill-val ${v.efficiency < 0.5 ? 'green' : 'red'}">${fmt.pct(v.efficiency)}</span></div>
-      <div class="kpi-pill"><span class="kpi-pill-label">NIM (proxy)</span><span class="kpi-pill-val">${fmt.pct(v.nim_proxy)}</span></div>
+      <div class="kpi-pill"><span class="kpi-pill-label">Yield de ativos (proxy NIM) ${tooltip('Yield de ativos (proxy NIM)')}</span><span class="kpi-pill-val">${fmt.pct(v.nim_proxy)}</span></div>
       <div class="kpi-pill"><span class="kpi-pill-label">Payout</span><span class="kpi-pill-val">${fmt.pct(v.payout)}</span></div>
       <div class="kpi-pill"><span class="kpi-pill-label">Div Yield ${tooltip('Div Yield')}</span><span class="kpi-pill-val">${fmt.pct(v.div_yield)}</span></div>
       <div class="kpi-pill"><span class="kpi-pill-label">Total Ativos</span><span class="kpi-pill-val">${fmt.bn(v.total_assets)}</span></div>
@@ -895,20 +897,26 @@ function buildTablePanel(r) {
     {label:'Tax Rate Efetivo',       fn: rw => rw.eff_tax, pct:true},
     {label:'Capex / Receita',        fn: rw => rw.capex_rev, pct:true},
     {label:'Opex / Receita',         fn: rw => rw.opex_rev, pct:true},
-    {label:'Net Debt / FCF (anos)',  fn: rw => rw.net_debt_fcf, raw:true},
+    {label:'Net Debt / FCF (anos)',  fn: rw => rw.net_debt_fcf, raw:true, skipFin:true},
     {label:'Ações Diluídas',         fn: rw => rw.shares, shares:true},
   ];
 
   const dates   = rows.map(rw => rw.date.slice(0,7));
-  const thHtml  = dates.map(d => `<th class="qtr-header">${d}</th>`).join('');
+  // Alterna zebra nas colunas de data por ano
+  const thHtml  = dates.map((d,i) => {
+    const yr = d.slice(0,4);
+    const cls = parseInt(yr) % 2 === 0 ? 'qtr-header qtr-even' : 'qtr-header qtr-odd';
+    return `<th class="${cls}">${d}</th>`;
+  }).join('');
   const tbodyHtml = metrics.map(m => {
     const cells = rows.map((rw, i) => {
       const v = m.fn(rw);
+      const isFin = r.valuation?.is_financial;
       let display;
-      if (v == null || isNaN(v)) display = '—';
+      if (v == null || isNaN(v) || (m.skipFin && isFin)) display = '—';
       else if (m.shares) display = (v/1e9).toFixed(3)+'B';
       else if (m.pct)    display = (v*100).toFixed(1)+'%';
-      else if (m.raw)    display = v.toFixed(1)+'x';
+      else if (m.raw)    display = Math.abs(v) > 200 ? '—' : v.toFixed(1)+'x';
       else               display = '$'+v.toFixed(2);
 
       let pctChange = null;
@@ -921,7 +929,7 @@ function buildTablePanel(r) {
         : '';
       return `<td><div class="pct-cell"><span>${display}</span>${pctHtml}</div></td>`;
     }).join('');
-    return `<tr><td>${m.label}</td>${cells}</tr>`;
+    return `<tr><td class="metric-label">${m.label}</td>${cells}</tr>`;
   }).join('');
 
   const fnName = `exportCSV_${r.ticker.replace(/[^a-zA-Z0-9]/g,'_')}`;
