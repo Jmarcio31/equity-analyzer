@@ -29,7 +29,6 @@ TICKERS = [
     {"symbol": "BBD",   "name": "Bradesco",             "sector": "Financial"},
     {"symbol": "BDORY", "name": "Banco do Brasil",      "sector": "Financial"},
     # Healthcare
-    {"symbol": "UNH",   "name": "UnitedHealth",         "sector": "Healthcare"},
     {"symbol": "JNJ",   "name": "Johnson & Johnson",    "sector": "Healthcare"},
     {"symbol": "LLY",   "name": "Eli Lilly",            "sector": "Healthcare"},
     # Energy
