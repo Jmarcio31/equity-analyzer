@@ -15,9 +15,36 @@ from datetime import date, datetime
 
 # ─── Configuração ─────────────────────────────────────────────────────────────
 # Valores substituídos pelo GitHub Actions via sed antes da execução
-AV_KEY       = "DZHRZQ6SWSMUBW4J"
+import os as _os
+
+# ─── Credenciais via variáveis de ambiente ────────────────────────────────────
+# Defina antes de rodar:
+#   set AV_KEY=sua_chave              (Windows)
+#   export AV_KEY=sua_chave           (Linux/Mac)
+#   set DATABASE_URL=postgresql://... (Windows)
+#
+# O GitHub Actions injeta via secrets (não precisa de env manual no CI).
+# Lê credenciais EXCLUSIVAMENTE de variáveis de ambiente.
+# Sem fallback hardcoded — falha explicitamente se não configurado.
+# Configuração local (PowerShell):
+#   $env:AV_KEY       = "SUA_CHAVE_AV"
+#   $env:DATABASE_URL = "postgresql://..."
+AV_KEY = _os.environ.get("AV_KEY")
+if not AV_KEY:
+    raise EnvironmentError(
+        "AV_KEY nao definida. "
+        "PowerShell: $env:AV_KEY = sua_chave | "
+        "bash: export AV_KEY=sua_chave"
+    )
+
+DATABASE_URL = _os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    raise EnvironmentError(
+        "DATABASE_URL nao definida. "
+        "PowerShell: $env:DATABASE_URL = postgresql://... | "
+        "bash: export DATABASE_URL=postgresql://..."
+    )
 AV_BASE      = "https://www.alphavantage.co/query"
-DATABASE_URL = "postgresql://equity_analyzer_db_hx38_user:YUfgSMUWH6OuWEacmiXSwTyPx5ow163n@dpg-d7aghkua2pns73dg3rd0-a.ohio-postgres.render.com/equity_analyzer_db_hx38"
 MAX_PER_DAY  = 4   # 4 tickers × 5 req = 20 req (margem de segurança)
 
 # ─── Lista de tickers (sincronizada com config.py) ────────────────────────────

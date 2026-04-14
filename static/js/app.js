@@ -181,8 +181,11 @@ function makeGauge(value, min, max, label, unit, thresholds) {
 
 // ─── Seleção de cards na landing ──────────────────────────────────────────────
 function toggleTicker(symbol, name, color) {
-  const idx  = selectedTickers.findIndex(t => t.symbol === symbol);
+  // P3: bloqueia seleção de tickers sem dados carregados
   const card = document.getElementById('card-' + symbol);
+  if (card && card.classList.contains('ticker-card--pending')) return;
+
+  const idx  = selectedTickers.findIndex(t => t.symbol === symbol);
   if (idx >= 0) {
     selectedTickers.splice(idx, 1);
     card.classList.remove('selected');
@@ -327,7 +330,7 @@ function buildComparisonPanel(results) {
       {label:'Eficiência',  fn: r => fmt.pct(r.valuation.efficiency),raw: r => r.valuation.efficiency, inv: true},
       {label:'Payout',      fn: r => fmt.pct(r.valuation.payout),   raw: r => r.valuation.payout},
       {label:'Div Yield',   fn: r => fmt.pct(r.valuation.div_yield), raw: r => r.valuation.div_yield},
-      {label:'Market Cap',  fn: r => fmt.bn(r.valuation.mktcap||r.price*r.rows.slice(-1)[0]?.shares), raw: r => r.price*(r.rows.slice(-1)[0]?.shares||0)},
+      {label:'Market Cap',  fn: r => fmt.bn(r.valuation.mktcap), raw: r => r.valuation.mktcap||0},
     ];
   } else if (mixed) {
     // Regime misto: só métricas transversais
@@ -335,7 +338,7 @@ function buildComparisonPanel(results) {
       {label:'Preço',           fn: r => fmt.$(r.price),                  raw: r => r.price},
       {label:'Div Yield',       fn: r => fmt.pct(r.valuation.div_yield),   raw: r => r.valuation.div_yield},
       {label:'MS Média',        fn: r => fmt.pct1(r.valuation.avg_ms),     raw: r => r.valuation.avg_ms},
-      {label:'Market Cap',      fn: r => fmt.bn(r.valuation.mktcap||r.price*(r.rows.slice(-1)[0]?.shares||0)), raw: r => r.valuation.mktcap||0},
+      {label:'Market Cap',      fn: r => fmt.bn(r.valuation.mktcap), raw: r => r.valuation.mktcap||0},
     ];
   } else {
     // Todas não-financeiras
@@ -430,9 +433,13 @@ function buildValuation(r, v, color) {
   const rows = r.rows;
 
   // Séries históricas para cada métrica
-  const roicSeries  = rows.map(rw => rw.roic);
-  const waccSeries  = rows.map(rw => rw.wacc);
-  const spreadSeries= rows.map(rw => rw.roic - rw.wacc);
+  // P1: séries históricas alinhadas ao conceito ex-Goodwill
+  // roic_ex_gw pode ser null quando IC < 1M — filtrado para o gauge histórico
+  const roicSeries   = rows.map(rw => rw.roic_ex_gw != null ? rw.roic_ex_gw : null);
+  const waccSeries   = rows.map(rw => rw.wacc);
+  const spreadSeries = rows.map(rw =>
+    rw.roic_ex_gw != null ? rw.roic_ex_gw - rw.wacc : null
+  );
   const fcfSeries   = rows.map(rw => rw.fcf_sbc_ps);
   const ebitSeries  = rows.map(rw => rw.ebit_ps);
   const epSeries    = rows.map(rw => rw.econ_profit_ps);
@@ -546,7 +553,11 @@ function buildValuationFinancial(r, v) {
   const peGauge    = makeGaugeCard('P/E',  'P/E',  Math.min(v.p_e||30,40), null, 0, 40, 'x', 'Preço ÷ Lucro/Ação',
     [{pct:0.375,color:'#22c55e'},{pct:0.625,color:'#f59e0b'},{pct:1,color:'#ef4444'}]);
   const gordonPTBV  = v.roe && v.p_tbv ? (v.roe / 0.10).toFixed(2) : null;
-  const ptbvNote    = gordonPTBV ? `P/TBV justo (Gordon): ${gordonPTBV}x (ROE÷Ke=10%)` : 'Preço ÷ Tangible BV';
+  // P4: nota com aviso de aproximação quando tbv_approximate
+  const tbvApproxTag = v.tbv_approximate ? ' <span style="color:#f59e0b;font-size:10px">≈ GW only</span>' : '';
+  const ptbvNote    = gordonPTBV
+    ? `P/TBV justo (Gordon): ${gordonPTBV}x (ROE÷Ke=10%)${v.tbv_approximate ? ' · TBV≈ exclui só GW' : ''}`
+    : 'Preço ÷ Tangible BV' + (v.tbv_approximate ? ' (≈ exclui só Goodwill)' : '');
   const ptbvGauge   = makeGaugeCard('P/TBV','P/TBV',Math.min(v.p_tbv||2,4), null, 0, 4, 'x', ptbvNote,
     [{pct:0.25,color:'#22c55e'},{pct:0.5,color:'#f59e0b'},{pct:1,color:'#ef4444'}]);
 
@@ -561,7 +572,7 @@ function buildValuationFinancial(r, v) {
       ${ptbvGauge}
     </div>
     <div class="kpi-strip">
-      <div class="kpi-pill"><span class="kpi-pill-label">TBV/Ação</span><span class="kpi-pill-val">${fmt.$(v.tbv_ps)}</span></div>
+      <div class="kpi-pill"><span class="kpi-pill-label">TBV/Ação ${tooltip('P/TBV')}${v.tbv_approximate ? '<span class="approx-badge" title="Exclui Goodwill mas pode não excluir todos os intangíveis">≈</span>' : ''}</span><span class="kpi-pill-val">${fmt.$(v.tbv_ps)}</span></div>
       <div class="kpi-pill"><span class="kpi-pill-label">BV/Ação</span><span class="kpi-pill-val">${fmt.$(v.bv_ps)}</span></div>
       <div class="kpi-pill"><span class="kpi-pill-label">Eficiência ${tooltip('Eficiência')}</span><span class="kpi-pill-val ${v.efficiency < 0.5 ? 'green' : v.efficiency < 0.65 ? 'yellow' : 'red'}">${fmt.pct(v.efficiency)}</span></div>
       <div class="kpi-pill"><span class="kpi-pill-label">Yield de ativos (proxy NIM) ${tooltip('Yield de ativos (proxy NIM)')}</span><span class="kpi-pill-val">${fmt.pct(v.nim_proxy)}</span></div>
@@ -646,7 +657,7 @@ function buildChartsPanel(r) {
       <div class="chart-card"><div class="chart-title">EBIT por Ação (TTM)</div><canvas class="chart-canvas" id="ch-ebit-${id}"></canvas></div>
       <div class="chart-card"><div class="chart-title">FCF − SBC por Ação (TTM)</div><canvas class="chart-canvas" id="ch-fcf-${id}"></canvas></div>
       <div class="chart-card"><div class="chart-title">Economic Profit por Ação (TTM)</div><canvas class="chart-canvas" id="ch-ep-${id}"></canvas></div>
-      <div class="chart-card"><div class="chart-title">ROIC vs WACC</div><canvas class="chart-canvas" id="ch-roic-${id}"></canvas></div>
+      <div class="chart-card"><div class="chart-title">ROIC ex-Goodwill vs WACC</div><canvas class="chart-canvas" id="ch-roic-${id}"></canvas></div>
       <div class="chart-card"><div class="chart-title">Receita por Ação (TTM)</div><canvas class="chart-canvas" id="ch-rev-${id}"></canvas></div>
       <div class="chart-card"><div class="chart-title">Dívida Líquida / FCF (anos)</div><canvas class="chart-canvas" id="ch-lev-${id}"></canvas></div>
     </div>`;
@@ -733,7 +744,7 @@ function renderCharts(ticker) {
     makeChart(`ch-ebit-${ticker}`,  [ds('EBIT/ação', rows.map(r=>r.ebit_ps), color, true)]);
     makeChart(`ch-fcf-${ticker}`,   [ds('FCF-SBC/ação', rows.map(r=>r.fcf_sbc_ps), '#22c55e', true)]);
     makeChart(`ch-ep-${ticker}`,    [ds('Eco.Profit/ação', rows.map(r=>r.econ_profit_ps), '#a78bfa', true)]);
-    makeChart(`ch-roic-${ticker}`,  [ds('ROIC', rows.map(r=>r.roic), color), ds('WACC', rows.map(r=>r.wacc), '#ef4444')], {pct:true});
+    makeChart(`ch-roic-${ticker}`,  [ds('ROIC ex-GW', rows.map(r=>r.roic_ex_gw!=null?r.roic_ex_gw:r.roic), color), ds('WACC', rows.map(r=>r.wacc), '#ef4444')], {pct:true});
     makeChart(`ch-rev-${ticker}`,   [ds('Receita/ação', rows.map(r=>r.revenue_ps), '#f59e0b', true)]);
     makeChart(`ch-lev-${ticker}`,   [ds('Net Debt/FCF', rows.map(r=>r.net_debt_fcf), '#f87171')]);
     renderPriceChart(ticker, r, color);
