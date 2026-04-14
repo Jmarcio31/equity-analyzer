@@ -2,8 +2,8 @@ name: Equity Data Maintenance
 
 on:
   schedule:
-    - cron: '0 14 * * 1'
-    - cron: '0 22 * * 2-5'
+    - cron: '0 14 * * 1'      # Fundamentais: segunda às 14h UTC (11h BRT)
+    - cron: '0 22 * * 2-5'    # Cotações: ter-sex às 22h UTC (19h BRT)
   workflow_dispatch:
     inputs:
       mode:
@@ -27,14 +27,11 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests psycopg2-binary
-      - name: Injeta credenciais
+      - name: Atualiza fundamentais
         env:
-          AV_API_KEY: ${{ secrets.AV_API_KEY }}
+          AV_KEY: ${{ secrets.AV_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          sed -i "s|AV_KEY       = \"DZHRZQ6SWSMUBW4J\"|AV_KEY       = \"$AV_API_KEY\"|g" load_av.py
-          sed -i "s|DATABASE_URL = \"postgresql://equity_analyzer_db_hx38_user:YUfgSMUWH6OuWEacmiXSwTyPx5ow163n@dpg-d7aghkua2pns73dg3rd0-a.ohio-postgres.render.com/equity_analyzer_db_hx38\"|DATABASE_URL = \"$DATABASE_URL\"|g" load_av.py
-          python load_av.py --update
+        run: python load_av.py --update
 
   update_prices:
     name: Atualizar cotações (ter-sex)
@@ -47,11 +44,8 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests psycopg2-binary
-      - name: Injeta credenciais
+      - name: Atualiza cotações
         env:
-          AV_API_KEY: ${{ secrets.AV_API_KEY }}
+          AV_KEY: ${{ secrets.AV_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          sed -i "s|AV_KEY       = \"DZHRZQ6SWSMUBW4J\"|AV_KEY       = \"$AV_API_KEY\"|g" load_av.py
-          sed -i "s|DATABASE_URL = \"postgresql://equity_analyzer_db_hx38_user:YUfgSMUWH6OuWEacmiXSwTyPx5ow163n@dpg-d7aghkua2pns73dg3rd0-a.ohio-postgres.render.com/equity_analyzer_db_hx38\"|DATABASE_URL = \"$DATABASE_URL\"|g" load_av.py
-          python load_av.py --prices
+        run: python load_av.py --prices
