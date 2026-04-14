@@ -7,10 +7,19 @@ Execução:
     python -m pytest tests/test_calc.py -v          # com pytest instalado
     python tests/test_calc.py                        # sem pytest (unittest nativo)
 """
-import sys, os, math, unittest
+import sys, os, math, unittest, importlib.util
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.calc import compute_valuation, compute_valuation_financial
+# Importa calc.py diretamente — evita app/__init__.py (que carrega Flask/psycopg2)
+# Funciona mesmo sem Flask instalado no ambiente de testes
+_spec = importlib.util.spec_from_file_location(
+    "calc",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app", "calc.py")
+)
+_calc = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_calc)
+compute_valuation           = _calc.compute_valuation
+compute_valuation_financial = _calc.compute_valuation_financial
 
 TREASURY = 0.0428
 PRICE    = 170.0
