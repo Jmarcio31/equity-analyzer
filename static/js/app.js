@@ -390,43 +390,6 @@ function switchTab(ticker, tab, btnEl) {
   if (tab === 'charts') renderCharts(ticker);
 }
 
-// ─── Card Histórico vs Atual ──────────────────────────────────────────────────
-function histCard(label, current, histValues, unit='%', invertColor=false) {
-  const vals = histValues.filter(v => v != null && !isNaN(v));
-  const avg  = vals.length ? vals.reduce((a,b) => a+b, 0) / vals.length : null;
-  const pctDiff = (current != null && avg != null && avg !== 0) ? (current - avg) / Math.abs(avg) : null;
-  const isGood = invertColor ? (pctDiff != null && pctDiff < 0) : (pctDiff != null && pctDiff > 0);
-  const isBad  = invertColor ? (pctDiff != null && pctDiff > 0) : (pctDiff != null && pctDiff < 0);
-
-  const fmt2 = v => {
-    if (v == null) return '—';
-    if (unit === '%') return (v * 100).toFixed(1) + '%';
-    if (unit === 'x') return v.toFixed(1) + 'x';
-    if (unit === '$') return '$' + v.toFixed(2);
-    return v.toFixed(2);
-  };
-
-  const pctStr = pctDiff != null ? (pctDiff >= 0 ? '+' : '') + (pctDiff * 100).toFixed(1) + '%' : '';
-  const arrow  = isGood ? '▲' : isBad ? '▼' : '●';
-  const clr    = isGood ? '#22c55e' : isBad ? '#ef4444' : '#94a3b8';
-
-  return `<div class="hist-card">
-    <div class="hist-label">${label}${tooltip(label)}</div>
-    <div class="hist-main-row">
-      <div class="hist-center">
-        <div class="hist-val-current">${fmt2(current)}</div>
-        <div class="hist-sub-row">
-          <span class="hist-avg-label">Média histórica:</span>
-          <span class="hist-avg-val">${fmt2(avg)}</span>
-        </div>
-      </div>
-      <div class="hist-delta" style="color:${clr}">
-        <span class="hist-arrow">${arrow}</span>
-        <span class="hist-pct">${pctStr}</span>
-      </div>
-    </div>
-  </div>`;
-}
 
 // ─── Aba Valuation (não-financeiras) ─────────────────────────────────────────
 function buildValuation(r, v, color) {
@@ -640,6 +603,7 @@ function buildChartsPanel(r) {
           <label class="tog-btn tog-active" data-metric="fcf"><span class="tog-dot" style="background:#22c55e"></span>FCF-SBC/ação</label>
           <label class="tog-btn" data-metric="graham_ebit"><span class="tog-dot" style="background:#f59e0b"></span>Graham EBIT</label>
           <label class="tog-btn" data-metric="graham_ep"><span class="tog-dot" style="background:#fb923c"></span>Graham EP</label>
+          <label class="tog-btn tog-sep" data-metric="normalize"><span class="tog-dot" style="background:#94a3b8"></span>Normalizar (=100)</label>
         </div>
       </div>
       <canvas style="max-height:320px" id="ch-price-${id}"></canvas>
@@ -760,11 +724,19 @@ function renderPriceChartFin(ticker, r, color, bvSeries, tbvSeries) {
   const active  = new Set();
   if (togArea) togArea.querySelectorAll('.tog-btn.tog-active').forEach(b => active.add(b.dataset.metric));
 
-  const priceDataXY = priceHist.map(p => ({x: p.date, y: p.close}));
+  const normalize = active.has('normalize');
+  const basePriceFin = priceHist[0]?.close;
+  const priceDataXY = priceHist.map(p => ({
+    x: p.date,
+    y: normalize && basePriceFin ? p.close / basePriceFin * 100 : p.close
+  }));
+
   const datasets = [{
-    label:'Preço', data: priceDataXY,
+    label: normalize ? 'Preço (base 100)' : 'Preço',
+    data: priceDataXY,
     borderColor: color, backgroundColor: color+'18',
-    borderWidth:2, pointRadius:0, tension:0.2, fill:true, yAxisID:'yPrice', order:0
+    borderWidth:2, pointRadius:0, tension:0.2, fill:true,
+    yAxisID: normalize ? 'yNorm' : 'yPrice', order:0
   }];
 
   const metricMap = {
@@ -774,11 +746,16 @@ function renderPriceChartFin(ticker, r, color, bvSeries, tbvSeries) {
   };
   for (const [key, m] of Object.entries(metricMap)) {
     if (!active.has(key)) continue;
+    const rawPts = m.data.map((v,i) => ({x: qDates[i], y: v}));
+    const baseM  = rawPts.find(p => p.y != null)?.y;
+    const normPts = rawPts.map(p => ({x:p.x, y: normalize && baseM && p.y!=null ? p.y/baseM*100 : p.y}));
     datasets.push({
-      label: m.label, data: m.data.map((v,i) => ({x: qDates[i], y: v})),
+      label: normalize ? m.label+' (base 100)' : m.label,
+      data: normPts,
       borderColor: m.color, backgroundColor:'transparent',
       borderWidth:1.5, borderDash:[5,3], pointRadius:3, pointBackgroundColor:m.color,
-      tension:0.3, fill:false, yAxisID:'yMetric', order:1
+      tension:0.3, fill:false,
+      yAxisID: normalize ? 'yNorm' : 'yMetric', order:1
     });
   }
 
@@ -795,18 +772,25 @@ function renderPriceChartFin(ticker, r, color, bvSeries, tbvSeries) {
           return v == null ? null : `${ctx.dataset.label}: $${v.toFixed(2)}`;
         }}}
       },
-      scales:{
-        x:{type:'time', time:{unit:'month', displayFormats:{month:'MMM yy'}},
-           ticks:{color:'#64748b', maxTicksLimit:10, font:{size:9}}, grid:{color:'#2d3150'}},
-        yPrice:{type:'linear', position:'left',
-                ticks:{color:'#94a3b8', font:{size:9}, callback:v=>'$'+v.toFixed(0)},
-                grid:{color:'#2d3150'},
-                title:{display:true, text:'Preço ($)', color:'#64748b', font:{size:10}}},
-        yMetric:{type:'linear', position:'right',
-                 ticks:{color:'#64748b', font:{size:9}, callback:v=>'$'+v.toFixed(1)},
-                 grid:{drawOnChartArea:false},
-                 title:{display:true, text:'Valor/Ação ($)', color:'#64748b', font:{size:10}}}
-      }
+      scales: Object.assign(
+        {x:{type:'time', time:{unit:'month', displayFormats:{month:'MMM yy'}},
+            ticks:{color:'#64748b', maxTicksLimit:10, font:{size:9}}, grid:{color:'#2d3150'}}},
+        normalize ? {
+          yNorm:{type:'linear', position:'left',
+                 ticks:{color:'#94a3b8', font:{size:9}, callback:v=>v.toFixed(0)},
+                 grid:{color:'#2d3150'},
+                 title:{display:true, text:'Índice (base=100)', color:'#64748b', font:{size:10}}}
+        } : {
+          yPrice:{type:'linear', position:'left',
+                  ticks:{color:'#94a3b8', font:{size:9}, callback:v=>'$'+v.toFixed(0)},
+                  grid:{color:'#2d3150'},
+                  title:{display:true, text:'Preço ($)', color:'#64748b', font:{size:10}}},
+          yMetric:{type:'linear', position:'right',
+                   ticks:{color:'#64748b', font:{size:9}, callback:v=>'$'+v.toFixed(1)},
+                   grid:{drawOnChartArea:false},
+                   title:{display:true, text:'Valor/Ação ($)', color:'#64748b', font:{size:10}}}
+        }
+      )
     }
   });
 }
@@ -838,22 +822,35 @@ function renderPriceChart(ticker, r, color) {
   const active  = new Set();
   if (togArea) togArea.querySelectorAll('.tog-btn.tog-active').forEach(b => active.add(b.dataset.metric));
 
-  const priceDataXY = priceHist.map(p => ({x: p.date, y: p.close}));
+  const normalize = active.has('normalize');
   const qDates = rows.map(rw => rw.date);
+  const basePx  = priceHist[0]?.close;
+
+  const priceDataXY = priceHist.map(p => ({
+    x: p.date,
+    y: normalize && basePx ? p.close / basePx * 100 : p.close
+  }));
 
   const datasets = [{
-    label:'Preço', data: priceDataXY,
+    label: normalize ? 'Preço (base 100)' : 'Preço',
+    data: priceDataXY,
     borderColor: color, backgroundColor: color+'18',
-    borderWidth:2, pointRadius:0, tension:0.2, fill:true, yAxisID:'yPrice', order:0
+    borderWidth:2, pointRadius:0, tension:0.2, fill:true,
+    yAxisID: normalize ? 'yNorm' : 'yPrice', order:0
   }];
 
   for (const [key, m] of Object.entries(metricMap)) {
     if (!active.has(key)) continue;
+    const rawPts  = m.data.map((v,i) => ({x: qDates[i], y: v}));
+    const baseM   = rawPts.find(p => p.y != null)?.y;
+    const normPts = rawPts.map(p => ({x:p.x, y: normalize && baseM && p.y!=null ? p.y/baseM*100 : p.y}));
     datasets.push({
-      label: m.label, data: m.data.map((v,i) => ({x: qDates[i], y: v})),
+      label: normalize ? m.label+' (base 100)' : m.label,
+      data: normPts,
       borderColor: m.color, backgroundColor:'transparent',
       borderWidth:1.5, borderDash:[5,3], pointRadius:3, pointBackgroundColor:m.color,
-      tension:0.3, fill:false, yAxisID:'yMetric', order:1
+      tension:0.3, fill:false,
+      yAxisID: normalize ? 'yNorm' : 'yMetric', order:1
     });
   }
 
@@ -870,18 +867,25 @@ function renderPriceChart(ticker, r, color) {
           return v == null ? null : `${ctx.dataset.label}: $${v.toFixed(2)}`;
         }}}
       },
-      scales:{
-        x:{type:'time', time:{unit:'month', displayFormats:{month:'MMM yy'}},
-           ticks:{color:'#64748b', maxTicksLimit:10, font:{size:9}}, grid:{color:'#2d3150'}},
-        yPrice:{type:'linear', position:'left',
-                ticks:{color:'#94a3b8', font:{size:9}, callback:v=>'$'+v.toFixed(0)},
-                grid:{color:'#2d3150'},
-                title:{display:true, text:'Preço ($)', color:'#64748b', font:{size:10}}},
-        yMetric:{type:'linear', position:'right',
-                 ticks:{color:'#64748b', font:{size:9}, callback:v=>'$'+v.toFixed(1)},
-                 grid:{drawOnChartArea:false},
-                 title:{display:true, text:'Métricas/Ação ($)', color:'#64748b', font:{size:10}}}
-      }
+      scales: Object.assign(
+        {x:{type:'time', time:{unit:'month', displayFormats:{month:'MMM yy'}},
+            ticks:{color:'#64748b', maxTicksLimit:10, font:{size:9}}, grid:{color:'#2d3150'}}},
+        normalize ? {
+          yNorm:{type:'linear', position:'left',
+                 ticks:{color:'#94a3b8', font:{size:9}, callback:v=>v.toFixed(0)},
+                 grid:{color:'#2d3150'},
+                 title:{display:true, text:'Índice (base=100)', color:'#64748b', font:{size:10}}}
+        } : {
+          yPrice:{type:'linear', position:'left',
+                  ticks:{color:'#94a3b8', font:{size:9}, callback:v=>'$'+v.toFixed(0)},
+                  grid:{color:'#2d3150'},
+                  title:{display:true, text:'Preço ($)', color:'#64748b', font:{size:10}}},
+          yMetric:{type:'linear', position:'right',
+                   ticks:{color:'#64748b', font:{size:9}, callback:v=>'$'+v.toFixed(1)},
+                   grid:{drawOnChartArea:false},
+                   title:{display:true, text:'Métricas/Ação ($)', color:'#64748b', font:{size:10}}}
+        }
+      )
     }
   });
 }

@@ -42,6 +42,11 @@ TICKERS = [
 
 SYMBOLS = [t["symbol"] for t in TICKERS]
 
+# Instituições financeiras — usam motor analítico separado (ROE/P·TBV/NIM)
+# Visa (V) é excluída propositalmente: empresa de tecnologia de pagamentos,
+# sem captação de depósitos ou risco de crédito → analisada como não-financeira
+FINANCIAL_TICKERS = {"JPM", "BRK-B", "ITUB", "NU", "BBD", "BDORY"}
+
 # Cores por setor (usadas na UI)
 SECTOR_COLORS = {
     "Technology": "#4f7cff",

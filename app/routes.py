@@ -3,7 +3,8 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from config import TICKERS, SECTOR_COLORS
 from . import database as db
-from .calc import compute_valuation, compute_valuation_financial, FINANCIAL_TICKERS
+from .calc import compute_valuation, compute_valuation_financial
+from config import FINANCIAL_TICKERS
 from .data import (fetch_current_price, fetch_overview,
                    fetch_income_statement, fetch_balance_sheet,
                    fetch_cash_flow, fetch_price_history,

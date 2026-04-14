@@ -27,11 +27,17 @@ def compute_valuation(rows, price, treasury_yield=0.0428):
     ms_ep   = ms(g_ep,   price)
     ms_div  = ms(g_div,  price)
 
-    # avg_ms: usa apenas FCF e Div (mais estáveis); EP é muito volátil e distorce
-    # Só inclui se o valor intrínseco for positivo (graham > 0)
+    # avg_ms: usa FCF e Div (mais estáveis que EP)
+    # Dividendo só entra se ticker tiver ≥8 trimestres de histórico de dividendos
+    # (evita CAGR explosivo quando empresa iniciou dividendos recentemente)
+    div_quarters_with_data = sum(1 for r in rows if (r.get("dividend_ps") or 0) > 0)
+    div_history_sufficient = div_quarters_with_data >= 8
+
     valid_ms = []
-    if g_fcf and g_fcf > 0 and ms_fcf is not None: valid_ms.append(ms_fcf)
-    if g_div and g_div > 0 and ms_div is not None: valid_ms.append(ms_div)
+    if g_fcf and g_fcf > 0 and ms_fcf is not None:
+        valid_ms.append(ms_fcf)
+    if div_history_sufficient and g_div and g_div > 0 and ms_div is not None:
+        valid_ms.append(ms_div)
     avg_ms = sum(valid_ms)/len(valid_ms) if valid_ms else None
     shares = last.get("shares", 1)
     mktcap = price * shares
@@ -60,13 +66,18 @@ def compute_valuation(rows, price, treasury_yield=0.0428):
         "tir":        last.get("ebit_abs",0) / ev          if ev      else None,
         "roic_last":   last.get("roic",0),
         "wacc_last":   last.get("wacc",0),
-        "econ_spread": last.get("roic",0) - last.get("wacc",0),
+        # econ_spread: suprime quando ROIC é off-scale (IC próximo de zero)
+        # Spread de 739% não tem significado econômico interpretável
+        "econ_spread": (last.get("roic",0) - last.get("wacc",0))
+                       if last.get("roic") is not None and abs(last.get("roic",0)) < 5
+                       else None,
     }
 
 
 # ─── Motor analítico para financeiras ────────────────────────────────────────
+# FINANCIAL_TICKERS agora definido em config.py (fonte única da verdade)
+# Importado em routes.py diretamente de config
 
-FINANCIAL_TICKERS = {"JPM","BRK-B","ITUB","NU","BBD","BDORY"}
 
 def compute_valuation_financial(rows, price, treasury_yield=0.0428):
     """
@@ -93,10 +104,10 @@ def compute_valuation_financial(rows, price, treasury_yield=0.0428):
     bv_ps          = equity / shares
 
     # ── ROE (TTM) ─────────────────────────────────────────────────────────────
-    net_income_ttm = fv(last.get("net_income_abs") or last.get("nopat_abs") * 1.3)
-    # fallback: usa net_income_ps × shares
+    # Lucro líquido TTM: usa net_income_ps × shares (dado direto do banco)
+    # Sem fallback arbitrário — se ausente, métricas dependentes retornam None
     ni_ps          = fv(last.get("net_income_ps"))
-    net_income_ttm = ni_ps * shares if ni_ps else net_income_ttm
+    net_income_ttm = ni_ps * shares if ni_ps else 0.0
 
     # ROE = Lucro Líquido TTM / Patrimônio Líquido
     roe = net_income_ttm / equity if equity else 0
