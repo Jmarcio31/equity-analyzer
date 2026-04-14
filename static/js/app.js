@@ -21,7 +21,7 @@ function fmtDate(d) {
 
 // ─── Definições de tooltip ────────────────────────────────────────────────────
 window.TOOLTIPS = {
-  'ROIC':             'Return on Invested Capital.\n\nFórmula: NOPAT ÷ Capital Investido ex-Goodwill\nNOPAT = EBIT × (1 − Tax Rate efetivo, cap 30%)\nCapital ex-GW = NWC + PPE + Intangíveis\n\n⚠ Quando o Capital Investido é muito pequeno (próximo de zero) ou negativo — situação comum em empresas capital-light como AAPL — o ROIC pode atingir centenas ou milhares de porcento.\n\nIsso não é erro: significa que a empresa gera lucro operacional com mínimo capital imobilizado (vantagem competitiva real). Mas o número perde comparabilidade entre trimestres.\n\nO gauge fixa o ponteiro no topo e exibe o valor real com indicador ⚠ nesses casos.',
+  'ROIC':             'Return on Invested Capital — ex-Goodwill.\n\nFórmula: NOPAT ÷ Capital Investido ex-Goodwill\nNOPAT = EBIT × (1 − Tax Rate efetivo, cap 30%)\nCapital ex-GW = NWC + PPE + Intangíveis operacionais\n\nExclui goodwill para medir o retorno sobre ativos tangíveis, sem distorção de aquisições a prêmio.\n\n⚠ Capital Investido pode ser negativo ou muito pequeno em empresas capital-light (AAPL, MSFT). Nesse caso, o ROIC pode ser muito elevado — fenômeno econômico real, mas que perde comparabilidade.\n\nO gauge exibe ⚠ quando o valor estiver fora da escala. O fallback para ROIC com goodwill é usado quando ex-GW não está disponível.',
   'WACC':             'Weighted Average Cost of Capital.\n\nFórmula: Ke × We + Kd × (1−t) × Wd\nKe (custo do equity) = 10% fixo\nKd = Despesa Financeira ÷ Dívida Total',
   'Spread ROIC−WACC': 'ROIC − WACC. Spread positivo = empresa criando valor econômico acima do custo de capital.',
   'EP / Ação':        'Economic Profit por ação (TTM).\n\nFórmula: NOPAT − (WACC × Capital Investido ex-Goodwill)',
@@ -39,7 +39,7 @@ window.TOOLTIPS = {
   'Treasury 10Y':     'Yield do Treasury americano de 10 anos. Taxa livre de risco na Fórmula de Graham.',
   'ROE':              'Return on Equity — Lucro Líquido TTM ÷ Patrimônio Líquido.',
   'P/E':              'Preço ÷ Lucro Líquido por ação (TTM).',
-  'P/TBV':            'Preço ÷ Tangible Book Value por ação.\nTBV = Patrimônio Líquido − Goodwill.\n\n📐 Gordon implícito:\nP/TBV justo = (ROE − g) ÷ (Ke − g)\nAssumindo g ≈ 0: P/TBV justo ≈ ROE ÷ Ke\n\nEx: ROE = 15%, Ke = 10% → P/TBV justo = 1,5x\nP/TBV atual > justo → prêmio; < justo → desconto',
+  'P/TBV':            'Preço ÷ Tangible Book Value por ação.\nTBV ≈ Patrimônio Líquido − Goodwill.\n\n⚠ Limitação: o cálculo exclui goodwill mas pode não deduzir todos os intangíveis identificáveis (dados AV insuficientes). O TBV pode estar ligeiramente superestimado.\n\n📐 Gordon implícito:\nP/TBV justo = (ROE − g) ÷ (Ke − g)\nAssumindo g ≈ 0: P/TBV justo ≈ ROE ÷ Ke\n\nEx: ROE = 15%, Ke = 10% → P/TBV justo = 1,5x\nP/TBV atual > justo → prêmio; < justo → desconto',
   'EBIT':             'Earnings Before Interest and Taxes — lucro operacional (TTM).',
   'FCF − SBC':        'Free Cash Flow ajustado por Stock-Based Compensation.\nFórmula: OCF − |Capex| − SBC.',
   'Economic Profit':  'Lucro Econômico (EVA®).\nFórmula: NOPAT − (WACC × Capital Investido ex-Goodwill).',
@@ -311,16 +311,45 @@ function renderResults(results) {
 
 // ─── Painel de comparação ─────────────────────────────────────────────────────
 function buildComparisonPanel(results) {
-  const metrics = [
-    {label:'Preço',              fn: r => fmt.$(r.price),                  raw: r => r.price},
-    {label:'MS Média',           fn: r => fmt.pct1(r.valuation.avg_ms),    raw: r => r.valuation.avg_ms},
-    {label:'EV / EBIT',          fn: r => fmt.x(r.valuation.ev_ebit),      raw: r => r.valuation.ev_ebit, inv: true},
-    {label:'ROIC',               fn: r => fmt.pct(r.valuation.roic_last),   raw: r => r.valuation.roic_last},
-    {label:'Spread ROIC−WACC',   fn: r => fmt.pct1(r.valuation.econ_spread),raw: r => r.valuation.econ_spread},
-    {label:'FCF Yield',          fn: r => fmt.pct(r.valuation.fcf_yield),   raw: r => r.valuation.fcf_yield},
-    {label:'EBIT Yield',         fn: r => fmt.pct(r.valuation.tir),         raw: r => r.valuation.tir},
-    {label:'Market Cap',         fn: r => fmt.bn(r.valuation.mktcap),       raw: r => r.valuation.mktcap},
-  ];
+  const allFin  = results.every(r => r.valuation?.is_financial);
+  const someFin = results.some(r  => r.valuation?.is_financial);
+  const mixed   = someFin && !allFin;
+
+  // P8: métricas por regime analítico
+  let metrics;
+  if (allFin) {
+    // Todas financeiras
+    metrics = [
+      {label:'Preço',       fn: r => fmt.$(r.price),               raw: r => r.price},
+      {label:'ROE',         fn: r => fmt.pct(r.valuation.roe),      raw: r => r.valuation.roe},
+      {label:'P/TBV',       fn: r => fmt.x(r.valuation.p_tbv),      raw: r => r.valuation.p_tbv, inv: true},
+      {label:'P/E',         fn: r => fmt.x(r.valuation.p_e),        raw: r => r.valuation.p_e,   inv: true},
+      {label:'Eficiência',  fn: r => fmt.pct(r.valuation.efficiency),raw: r => r.valuation.efficiency, inv: true},
+      {label:'Payout',      fn: r => fmt.pct(r.valuation.payout),   raw: r => r.valuation.payout},
+      {label:'Div Yield',   fn: r => fmt.pct(r.valuation.div_yield), raw: r => r.valuation.div_yield},
+      {label:'Market Cap',  fn: r => fmt.bn(r.valuation.mktcap||r.price*r.rows.slice(-1)[0]?.shares), raw: r => r.price*(r.rows.slice(-1)[0]?.shares||0)},
+    ];
+  } else if (mixed) {
+    // Regime misto: só métricas transversais
+    metrics = [
+      {label:'Preço',           fn: r => fmt.$(r.price),                  raw: r => r.price},
+      {label:'Div Yield',       fn: r => fmt.pct(r.valuation.div_yield),   raw: r => r.valuation.div_yield},
+      {label:'MS Média',        fn: r => fmt.pct1(r.valuation.avg_ms),     raw: r => r.valuation.avg_ms},
+      {label:'Market Cap',      fn: r => fmt.bn(r.valuation.mktcap||r.price*(r.rows.slice(-1)[0]?.shares||0)), raw: r => r.valuation.mktcap||0},
+    ];
+  } else {
+    // Todas não-financeiras
+    metrics = [
+      {label:'Preço',              fn: r => fmt.$(r.price),                  raw: r => r.price},
+      {label:'MS Média',           fn: r => fmt.pct1(r.valuation.avg_ms),    raw: r => r.valuation.avg_ms},
+      {label:'EV / EBIT',          fn: r => fmt.x(r.valuation.ev_ebit),      raw: r => r.valuation.ev_ebit, inv: true},
+      {label:'ROIC',               fn: r => fmt.pct(r.valuation.roic_last),   raw: r => r.valuation.roic_last},
+      {label:'Spread ROIC−WACC',   fn: r => fmt.pct1(r.valuation.econ_spread),raw: r => r.valuation.econ_spread},
+      {label:'FCF Yield',          fn: r => fmt.pct(r.valuation.fcf_yield),   raw: r => r.valuation.fcf_yield},
+      {label:'EBIT Yield',         fn: r => fmt.pct(r.valuation.tir),         raw: r => r.valuation.tir},
+      {label:'Market Cap',         fn: r => fmt.bn(r.valuation.mktcap),       raw: r => r.valuation.mktcap},
+    ];
+  }
 
   const cols = results.map(r => `<th style="color:${r.color||'#4f7cff'};font-size:15px">${r.ticker}</th>`).join('');
   const rows = metrics.map(m => {
@@ -335,9 +364,14 @@ function buildComparisonPanel(results) {
     return `<tr><td class="comp-label">${m.label}</td>${cells}</tr>`;
   }).join('');
 
+  const mixedWarning = mixed
+    ? `<div class="regime-warning">⚠️ Comparação entre regimes analíticos distintos (empresas não-financeiras e financeiras). Apenas métricas transversais são exibidas.</div>`
+    : '';
+
   const div = document.createElement('div');
   div.innerHTML = `<div class="company-card">
     <div class="section-header">⚖️ Comparação — ${results.map(r=>r.ticker).join(' · ')}</div>
+    ${mixedWarning}
     <div style="padding:0 24px 24px">
       <table class="comp-table">
         <thead><tr><th></th>${cols}</tr></thead>
@@ -540,7 +574,7 @@ function buildValuationFinancial(r, v) {
 
   <div class="section-header">🎯 Graham (adaptado)</div>
   <div class="section-body">
-    <p style="font-size:13px;color:var(--text2);margin-bottom:14px">EPS = Lucro Líquido/Ação · CAGR = crescimento de receita (proxy)</p>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:14px">EPS = Lucro Líquido/Ação TTM · CAGR = crescimento do LPA (EPS) — mais adequado que receita para bancos</p>
     <div class="ms-table-wrap"><table class="ms-table">
       <thead><tr><th>Métrica</th><th>Valor/Ação TTM</th><th>CAGR</th><th>Graham (V)</th><th>Margem de Segurança</th><th></th></tr></thead>
       <tbody>
@@ -892,8 +926,34 @@ function renderPriceChart(ticker, r, color) {
 
 // ─── Aba Trimestres ───────────────────────────────────────────────────────────
 function buildTablePanel(r) {
-  const rows = r.rows;
-  const metrics = [
+  const rows  = r.rows;
+  const isFin = r.valuation?.is_financial;
+  const price = r.price || 0;
+
+  // P7: regime duplo — métricas distintas para financeiras vs não-financeiras
+  const metrics = isFin ? [
+    // Regime financeiro
+    {label:'Book Value / Ação',         fn: rw => rw.equity_abs && rw.shares ? rw.equity_abs/rw.shares : null},
+    {label:'Tangible BV / Ação',        fn: rw => rw.equity_abs && rw.goodwill_abs!=null && rw.shares ? Math.max(rw.equity_abs-rw.goodwill_abs,0)/rw.shares : null},
+    {label:'Net Income / Ação TTM',     fn: rw => rw.net_income_ps},
+    {label:'Dividendos / Ação TTM',     fn: rw => rw.dividend_ps},
+    {label:'Cash Retornado / Ação',     fn: rw => rw.cash_returned_ps},
+    {label:'Receita / Ação TTM',        fn: rw => rw.revenue_ps},
+    {label:'Patrimônio Líquido',        fn: rw => rw.equity_abs, bn:true},
+    {label:'Total de Ativos',           fn: rw => rw.total_assets_abs, bn:true},
+    {label:'ROE',                       fn: rw => rw.equity_abs && rw.net_income_ps && rw.shares ? (rw.net_income_ps*rw.shares)/rw.equity_abs : null, pct:true},
+    {label:'P/TBV (histórico)',         fn: rw => {
+      const tbv = rw.equity_abs && rw.goodwill_abs!=null && rw.shares ? Math.max(rw.equity_abs-rw.goodwill_abs,0)/rw.shares : null;
+      return (price && tbv && tbv>0) ? price/tbv : null;
+    }, raw:true},
+    {label:'P/E (histórico)',           fn: rw => (price && rw.net_income_ps>0) ? price/rw.net_income_ps : null, raw:true},
+    {label:'Payout',                    fn: rw => rw.net_income_ps>0 ? rw.dividend_ps/rw.net_income_ps : null, pct:true},
+    {label:'Eficiência',                fn: rw => rw.opex_rev, pct:true},
+    {label:'Yield de Ativos (proxy NIM)',fn: rw => rw.total_assets_abs ? rw.revenue_abs/rw.total_assets_abs : null, pct:true},
+    {label:'Tax Rate Efetivo',          fn: rw => rw.eff_tax, pct:true},
+    {label:'Ações Diluídas',            fn: rw => rw.shares, shares:true},
+  ] : [
+    // Regime padrão (não-financeiras)
     {label:'Cash / Ação',            fn: rw => rw.cash_ps},
     {label:'Dívida + Lease / Ação',  fn: rw => rw.debt_lease_ps},
     {label:'Receita / Ação TTM',     fn: rw => rw.revenue_ps},
@@ -907,14 +967,13 @@ function buildTablePanel(r) {
     {label:'Cash Retornado / Ação',  fn: rw => rw.cash_returned_ps},
     {label:'Eco. Profit / Ação TTM', fn: rw => rw.econ_profit_ps},
     {label:'Cap. Investido / Ação',  fn: rw => rw.invested_cap_ps},
-    {label:'ROIC',                   fn: rw => rw.roic, pct:true},
     {label:'ROIC ex-Goodwill',       fn: rw => rw.roic_ex_gw != null && Math.abs(rw.roic_ex_gw) < 100 ? rw.roic_ex_gw : null, pct:true},
     {label:'ROIIC (1 ano)',          fn: rw => rw.roiic_1y, pct:true},
     {label:'WACC',                   fn: rw => rw.wacc, pct:true},
     {label:'Tax Rate Efetivo',       fn: rw => rw.eff_tax, pct:true},
     {label:'Capex / Receita',        fn: rw => rw.capex_rev, pct:true},
     {label:'Opex / Receita',         fn: rw => rw.opex_rev, pct:true},
-    {label:'Net Debt / FCF (anos)',  fn: rw => rw.net_debt_fcf, raw:true, skipFin:true},
+    {label:'Net Debt / FCF (anos)',  fn: rw => rw.net_debt_fcf, raw:true},
     {label:'Ações Diluídas',         fn: rw => rw.shares, shares:true},
   ];
 
@@ -935,6 +994,7 @@ function buildTablePanel(r) {
       let display;
       if (v == null || isNaN(v) || (m.skipFin && isFin)) display = '—';
       else if (m.shares) display = (v/1e9).toFixed(3)+'B';
+      else if (m.bn)     display = '$'+(Math.abs(v)>=1e12?(v/1e12).toFixed(1)+'T':Math.abs(v)>=1e9?(v/1e9).toFixed(1)+'B':(v/1e6).toFixed(0)+'M');
       else if (m.pct)    display = (v*100).toFixed(1)+'%';
       else if (m.raw)    display = Math.abs(v) > 200 ? '—' : v.toFixed(1)+'x';
       else               display = '$'+v.toFixed(2);

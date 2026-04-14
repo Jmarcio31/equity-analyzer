@@ -49,7 +49,7 @@ def make_row(**overrides):
         cash_abs=96_000_000_000, total_debt_abs=36_000_000_000,
         equity_abs=300_000_000_000, goodwill_abs=20_000_000_000,
         total_assets_abs=500_000_000_000, net_debt=-60_000_000_000,
-        roic=0.24, roic_ex_gw=0.27, wacc=0.086, eff_tax=0.20,
+        roic=0.24, roic_ex_gw=0.27, wacc=0.086, eff_tax=0.20,  # P2: roic_ex_gw é o principal
         ebitda=110_000_000_000, capex_rev=0.09, opex_rev=0.65,
         debt_cap=0.11, equity_cap=0.89, net_debt_fcf=-1.0, roiic_1y=None,
         _ebit_cagr=0.18, _fcf_cagr=0.10, _ep_cagr=0.17,
@@ -107,21 +107,23 @@ class TestComputeValuation(unittest.TestCase):
         self.assertTrue(approx_eq(v["ev"], expected))
 
     def test_roic_last_preservado_sem_cap(self):
-        """ROIC off-scale (748%) deve ser preservado — sem filtro."""
-        rows = make_rows(roic=7.48)
+        """P2: roic_last usa roic_ex_gw; off-scale (748%) deve ser preservado."""
+        rows = make_rows(roic=7.48, roic_ex_gw=7.48)  # P2: ex_gw é o principal
         v = compute_valuation(rows, PRICE, TREASURY)
         self.assertTrue(approx_eq(v["roic_last"], 7.48))
 
     def test_econ_spread_none_quando_roic_off_scale(self):
-        """Spread deve ser None quando ROIC > 500% (não interpretável)."""
-        rows = make_rows(roic=7.48)
+        """P2+P3: spread None quando roic_ex_gw > 500%."""
+        rows = make_rows(roic=7.48, roic_ex_gw=7.48)
         v = compute_valuation(rows, PRICE, TREASURY)
         self.assertIsNone(v["econ_spread"])
 
     def test_econ_spread_calculado_quando_roic_normal(self):
-        rows = make_rows(roic=0.24, wacc=0.086)
+        """P2: spread usa roic_ex_gw quando disponível."""
+        rows = make_rows(roic=0.24, roic_ex_gw=0.27, wacc=0.086)
         v = compute_valuation(rows, PRICE, TREASURY)
-        self.assertTrue(approx_eq(v["econ_spread"], 0.24 - 0.086))
+        # spread = roic_ex_gw - wacc = 0.27 - 0.086
+        self.assertTrue(approx_eq(v["econ_spread"], 0.27 - 0.086))
 
     def test_graham_none_com_eps_negativo(self):
         rows = make_rows(ebit_ps=-2.0)
@@ -250,15 +252,15 @@ class TestCasosExtremos(unittest.TestCase):
         self.assertIsInstance(v, dict)
 
     def test_nvda_roic_alto_valido_98pct(self):
-        """NVDA ROIC ~98% — válido, spread deve ser calculado."""
-        rows = make_rows(roic=0.98, wacc=0.086)
+        """P2: NVDA roic_ex_gw ~98% — válido, spread calculado."""
+        rows = make_rows(roic=0.98, roic_ex_gw=0.98, wacc=0.086)
         v = compute_valuation(rows, PRICE, TREASURY)
         self.assertTrue(approx_eq(v["roic_last"], 0.98))
         self.assertTrue(approx_eq(v["econ_spread"], 0.98 - 0.086))
 
     def test_aapl_roic_748pct_spread_none(self):
-        """AAPL ROIC 748% — spread deve ser None (off-scale)."""
-        rows = make_rows(roic=7.48)
+        """P2+P3: AAPL roic_ex_gw 748% — spread None (off-scale)."""
+        rows = make_rows(roic=7.48, roic_ex_gw=7.48)
         v = compute_valuation(rows, 200.0, TREASURY)
         self.assertTrue(approx_eq(v["roic_last"], 7.48))
         self.assertIsNone(v["econ_spread"])

@@ -64,12 +64,16 @@ def compute_valuation(rows, price, treasury_yield=0.0428):
         "ep_yield":   last.get("econ_profit_abs",0) / mktcap if mktcap else None,
         "div_yield":  last.get("dividend_ps",0) / price    if price   else None,
         "tir":        last.get("ebit_abs",0) / ev          if ev      else None,
-        "roic_last":   last.get("roic",0),
+        # P2: usa roic_ex_gw (ex-Goodwill) — consistente com tooltip e filosofia
+        # fallback para roic simples quando roic_ex_gw não disponível (IC negativo)
+        "roic_last":   last.get("roic_ex_gw") if last.get("roic_ex_gw") is not None
+                       else last.get("roic", 0),
         "wacc_last":   last.get("wacc",0),
-        # econ_spread: suprime quando ROIC é off-scale (IC próximo de zero)
-        # Spread de 739% não tem significado econômico interpretável
-        "econ_spread": (last.get("roic",0) - last.get("wacc",0))
-                       if last.get("roic") is not None and abs(last.get("roic",0)) < 5
+        # P2: spread usa roic_ex_gw (consistente com roic_last)
+        # Suprime quando off-scale (IC próximo de zero → não interpretável)
+        "econ_spread": ((last.get("roic_ex_gw") or last.get("roic",0)) - last.get("wacc",0))
+                       if (last.get("roic_ex_gw") is not None
+                           and abs(last.get("roic_ex_gw",0)) < 5)
                        else None,
     }
 
@@ -98,7 +102,10 @@ def compute_valuation_financial(rows, price, treasury_yield=0.0428):
     equity         = fv(last.get("equity_abs"))
     goodwill       = fv(last.get("goodwill_abs"))
     intang         = max(fv(last.get("total_assets_abs")) * 0, 0)  # sem intang separado
-    tbv            = max(equity - goodwill, 1)  # Tangible Book Value
+    # P10: TBV = PL − goodwill; não subtrai demais intangíveis (dados AV insuficientes)
+    # tbv_approximate=True sinaliza essa limitação ao frontend
+    tbv            = max(equity - goodwill, 1)
+    tbv_approximate = True  # AV não separa intangíveis identificáveis de goodwill
     shares         = fv(last.get("shares")) or 1
     tbv_ps         = tbv / shares
     bv_ps          = equity / shares
@@ -138,7 +145,7 @@ def compute_valuation_financial(rows, price, treasury_yield=0.0428):
 
     # ── EPS e crescimento ─────────────────────────────────────────────────────
     eps_ps        = ni_ps
-    eps_cagr      = last.get("_ebit_cagr") or last.get("_fcf_cagr")  # CAGR de EPS/lucro, não de receita
+    eps_cagr      = last.get("_eps_cagr") or last.get("_ebit_cagr")  # P6: CAGR de EPS real; fallback para _ebit_cagr
     div_cagr      = last.get("_div_cagr")
 
     # ── Graham adaptado para financeiras ──────────────────────────────────────
@@ -148,7 +155,7 @@ def compute_valuation_financial(rows, price, treasury_yield=0.0428):
             return None
         return eps * (8.5 + 2 * g_pct) * (4.4 / y_pct)
 
-    g_cagr     = pct(last.get("_ebit_cagr") or last.get("_fcf_cagr"))  # CAGR de EPS/lucro
+    g_cagr     = pct(last.get("_eps_cagr") or last.get("_ebit_cagr"))  # P6: CAGR de EPS real; fallback para _ebit_cagr
     g_div_cagr = pct(last.get("_div_cagr"))
 
     graham_eps = graham_fin(eps_ps, g_cagr)
@@ -188,11 +195,12 @@ def compute_valuation_financial(rows, price, treasury_yield=0.0428):
         "div_yield":   div_yield_fin,
         "div_ps":      div_ps,
         "div_cagr":    last.get("_div_cagr"),
-        "eps_cagr":    last.get("_ebit_cagr") or last.get("_fcf_cagr"),
+        "eps_cagr":    last.get("_eps_cagr") or last.get("_ebit_cagr"),  # P6
         "revenue_abs": revenue_ttm,
         "total_assets": total_assets,
         "equity_abs":  equity,
         "tbv_abs":     tbv,
+        "tbv_approximate": tbv_approximate,
 
         # Graham adaptado
         "graham_eps":  graham_eps,

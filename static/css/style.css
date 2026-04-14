@@ -400,3 +400,15 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', -apple-s
 .gauge-offscale-badge:hover {
   background: rgba(245,158,11,0.25);
 }
+
+/* ─── Aviso de regime misto na comparação ───────────────────────────────────── */
+.regime-warning {
+  margin: 0 24px 0;
+  padding: 10px 16px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--yellow);
+  line-height: 1.5;
+}

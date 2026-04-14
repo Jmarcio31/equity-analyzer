@@ -140,6 +140,79 @@ def _normalize_cashflow(r):
     }
 
 
+
+def _build_ttm_series(ttm_inc):
+    """
+    P1: Extrai séries TTM do income statement.
+    Retorna: rev, ebit, ni, sbc, da, intr, tax, ebt
+    """
+    rev  = ttm_inc("revenue")
+    ebit = ttm_inc("operatingIncome")
+    ni   = ttm_inc("netIncome")
+    sbc  = ttm_inc("stockBasedCompensation") or 0
+    da   = ttm_inc("depreciationAndAmortization") or 0
+    intr = ttm_inc("interestExpense") or 0
+    tax  = ttm_inc("incomeTaxExpense") or 0
+    ebt  = ttm_inc("incomeBeforeTax") or 1
+    return rev, ebit, ni, sbc, da, intr, tax, ebt
+
+
+def _build_cashflow_ttm(ttm_cf):
+    """
+    P1: Extrai séries TTM do cash flow statement.
+    Retorna: ocf, cap, div, rep
+    """
+    ocf = ttm_cf("operatingCashFlow")
+    cap = ttm_cf("capitalExpenditure")
+    div = ttm_cf("dividendsPaid") or 0
+    rep = ttm_cf("commonStockRepurchased") or 0
+    return ocf, cap, div, rep
+
+
+def _build_capital_metrics(b, fv_fn):
+    """
+    P1: Calcula métricas de capital investido a partir do balanço patrimonial.
+    Retorna: cash, debt, gw, ia, eq, ca, cl, ppe, ta, nwc, ic, icx
+    P5: intangibleAssets já exclui goodwill — não subtraímos novamente
+    """
+    cst  = fv_fn(b.get("cashAndShortTermInvestments"))
+    clt  = fv_fn(b.get("longTermInvestments"))
+    cash = cst + clt
+    debt = fv_fn(b.get("totalDebt"))
+    gw   = fv_fn(b.get("goodwill"))
+    ia   = fv_fn(b.get("intangibleAssets"))   # já exclui goodwill (P5)
+    eq   = fv_fn(b.get("totalStockholdersEquity")) or 1
+    ca   = fv_fn(b.get("totalCurrentAssets"))
+    cl   = fv_fn(b.get("totalCurrentLiabilities"))
+    ppe  = fv_fn(b.get("propertyPlantEquipmentNet"))
+    ta   = fv_fn(b.get("totalAssets")) or 1
+
+    nwc  = (ca - cash) - (cl - debt)
+    ic   = nwc + ppe + gw + ia   # capital investido total (com goodwill)
+    icx  = ic - gw               # capital investido ex-goodwill (P2)
+    return cash, debt, gw, ia, eq, ca, cl, ppe, ta, nwc, ic, icx
+
+
+def _build_return_metrics(ebit, tax, ebt, intr, debt, eq, ic, icx):
+    """
+    P1: Calcula retornos (NOPAT, WACC, ROIC, EP).
+    P3: roic=0 e rx=None quando IC < 1M (sem max(...,1) artificial)
+    Retorna: rt, np2, dr, er, kd, wacc, roic, rx, ep
+    """
+    rt   = max(0.05, min(tax / ebt if ebt > 0 else 0.21, 0.30))
+    np2  = ebit * (1 - rt)
+    dr   = debt / (debt + abs(eq)) if (debt + abs(eq)) else 0
+    er   = 1 - dr
+    kd   = abs(intr) / debt if debt else 0
+    wacc = er * 0.10 + dr * kd * (1 - rt)
+
+    # P3: sem max(...,1) — IC pequeno/negativo retorna None, não valor absurdo
+    roic = np2 / ic  if ic  and abs(ic)  > 1e6 else 0
+    rx   = np2 / icx if icx and icx      > 1e6 else None
+    ep   = np2 - wacc * icx if icx and icx > 1e6 else None
+    return rt, np2, dr, er, kd, wacc, roic, rx, ep
+
+
 def build_rows(inc_raw, bs_raw, cf_raw, quarters=20):
     """
     Constrói lista de trimestres com métricas por ação a partir dos
@@ -225,7 +298,7 @@ def build_rows(inc_raw, bs_raw, cf_raw, quarters=20):
         cash  = cst + clt
         debt  = fv(b.get("totalDebt"))
         gw    = fv(b.get("goodwill"))
-        ia    = max(fv(b.get("intangibleAssets")) - gw, 0)
+        ia    = fv(b.get("intangibleAssets"))  # já exclui goodwill (intangibleAssetsExcludingGoodwill)
         eq    = fv(b.get("totalStockholdersEquity")) or 1
         ca    = fv(b.get("totalCurrentAssets"))
         cl    = fv(b.get("totalCurrentLiabilities"))
@@ -310,6 +383,7 @@ def build_rows(inc_raw, bs_raw, cf_raw, quarters=20):
             "_ep_cagr":   None,
             "_div_cagr":  None,
             "_rev_cagr":  None,
+            "_eps_cagr":  None,   # P6: CAGR de EPS — para motor de financeiras
         }
         rows.append(row)
 
@@ -340,11 +414,12 @@ def _compute_cagrs(rows):
     Apenas para valores positivos (evita CAGR com sinal trocado).
     """
     metrics = [
-        ("ebit_ps",    "_ebit_cagr"),
-        ("fcf_sbc_ps", "_fcf_cagr"),
+        ("ebit_ps",        "_ebit_cagr"),
+        ("fcf_sbc_ps",     "_fcf_cagr"),
         ("econ_profit_ps", "_ep_cagr"),
         ("dividend_ps",    "_div_cagr"),
         ("revenue_ps",     "_rev_cagr"),
+        ("net_income_ps",  "_eps_cagr"),   # P6: CAGR explícito de EPS para financeiras
     ]
     for field, cagr_key in metrics:
         for i in range(len(rows)):
