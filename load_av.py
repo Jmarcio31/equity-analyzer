@@ -456,9 +456,13 @@ def _compute_cagrs(rows):
                     continue
                 v0 = rows[i - lb][field]
                 v1 = rows[i][field]
-                if v0 and v1 and v0 > 0 and v1 > 0:
-                    rows[i][cagr_key] = (v1 / v0) ** (1 / years) - 1
-                    break
+                # Proteção: None, zero ou negativo invalidam o CAGR
+                try:
+                    if v0 and v1 and float(v0) > 0 and float(v1) > 0:
+                        rows[i][cagr_key] = (float(v1) / float(v0)) ** (1 / years) - 1
+                        break
+                except (TypeError, ValueError, ZeroDivisionError):
+                    pass
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

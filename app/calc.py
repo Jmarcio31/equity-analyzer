@@ -65,8 +65,11 @@ def compute_valuation(rows, price, treasury_yield=0.0428):
         "div_yield":  last.get("dividend_ps",0) / price    if price   else None,
         "tir":        last.get("ebit_abs",0) / ev          if ev      else None,
         # P2: usa roic_ex_gw (ex-Goodwill) — consistente com tooltip e filosofia
-        # fallback para roic simples quando roic_ex_gw não disponível (IC negativo)
-        "roic_last":   last.get("roic_ex_gw") if last.get("roic_ex_gw") is not None
+        # cap abs<5 (500%): filtra dados legados com max(...,1) ainda no banco
+        # fallback para roic simples quando roic_ex_gw não disponível ou absurdo
+        "roic_last":   last.get("roic_ex_gw")
+                       if (last.get("roic_ex_gw") is not None
+                           and abs(last.get("roic_ex_gw", 0)) < 5)
                        else last.get("roic", 0),
         "wacc_last":   last.get("wacc",0),
         # P2: spread usa roic_ex_gw (consistente com roic_last)
@@ -104,11 +107,16 @@ def compute_valuation_financial(rows, price, treasury_yield=0.0428):
     intang         = max(fv(last.get("total_assets_abs")) * 0, 0)  # sem intang separado
     # P10: TBV = PL − goodwill; não subtrai demais intangíveis (dados AV insuficientes)
     # tbv_approximate=True sinaliza essa limitação ao frontend
-    tbv            = max(equity - goodwill, 1)
+    tbv             = max(equity - goodwill, 1)
     tbv_approximate = True  # AV não separa intangíveis identificáveis de goodwill
+
     shares         = fv(last.get("shares")) or 1
     tbv_ps         = tbv / shares
     bv_ps          = equity / shares
+
+    # P5: mktcap e ev calculados aqui (evita fallback no comparativo)
+    mktcap_fin = price * shares
+    ev_fin     = mktcap_fin + fv(last.get('total_debt_abs')) - fv(last.get('cash_abs'))
 
     # ── ROE (TTM) ─────────────────────────────────────────────────────────────
     # Lucro líquido TTM: usa net_income_ps × shares (dado direto do banco)
@@ -208,4 +216,8 @@ def compute_valuation_financial(rows, price, treasury_yield=0.0428):
         "ms_eps":      ms_eps,
         "ms_div":      ms_div,
         "avg_ms":      avg_ms,
+
+        # P5: métricas de mercado (para comparativo)
+        "mktcap":      mktcap_fin,
+        "ev":          ev_fin,
     }
