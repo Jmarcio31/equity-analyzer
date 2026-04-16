@@ -47,37 +47,14 @@ if not DATABASE_URL:
 AV_BASE      = "https://www.alphavantage.co/query"
 MAX_PER_DAY  = 4   # 4 tickers × 5 req = 20 req (margem de segurança)
 
-# ─── Lista de tickers (sincronizada com config.py) ────────────────────────────
-# Remova UNH — já excluído do config.py
-TICKERS = [
-    {"symbol": "AAPL",  "name": "Apple Inc."},
-    {"symbol": "MSFT",  "name": "Microsoft"},
-    {"symbol": "NVDA",  "name": "NVIDIA"},
-    {"symbol": "GOOGL", "name": "Alphabet Inc."},
-    {"symbol": "META",  "name": "Meta Platforms"},
-    {"symbol": "ASML",  "name": "ASML Holding"},
-    {"symbol": "AMZN",  "name": "Amazon"},
-    {"symbol": "TSLA",  "name": "Tesla"},
-    {"symbol": "WMT",   "name": "Walmart"},
-    {"symbol": "NFLX",  "name": "Netflix"},
-    {"symbol": "MELI",  "name": "MercadoLibre"},
-    {"symbol": "ABEV",  "name": "Ambev"},
-    {"symbol": "JBS",   "name": "JBS S.A."},
-    {"symbol": "JPM",   "name": "JPMorgan Chase"},
-    {"symbol": "BRK-B", "name": "Berkshire Hathaway B"},
-    {"symbol": "V",     "name": "Visa"},
-    {"symbol": "ITUB",  "name": "Itaú Unibanco"},
-    {"symbol": "NU",    "name": "Nubank"},
-    {"symbol": "BBD",   "name": "Bradesco"},
-    {"symbol": "BDORY", "name": "Banco do Brasil"},
-    {"symbol": "JNJ",   "name": "Johnson & Johnson"},
-    {"symbol": "LLY",   "name": "Eli Lilly"},
-    {"symbol": "XOM",   "name": "Exxon Mobil"},
-    {"symbol": "PBR",   "name": "Petrobras"},
-    {"symbol": "AXIA",  "name": "Eletrobrás"},
-    {"symbol": "VALE",  "name": "Vale S.A."},
-    {"symbol": "SUZ",   "name": "Suzano S.A."},
-]
+# ─── Lista de tickers: importada de config.py (fonte única da verdade) ──────────
+# Para adicionar/remover tickers, edite APENAS config.py.
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from config import TICKERS as _CONFIG_TICKERS
+
+# Formato simplificado para o script de carga
+TICKERS = [{"symbol": t["symbol"], "name": t["name"]} for t in _CONFIG_TICKERS]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

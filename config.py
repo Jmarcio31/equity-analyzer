@@ -1,7 +1,22 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# CONFIGURAÇÃO DE TICKERS
-# Para adicionar uma nova ação: basta inserir um novo dicionário na lista.
-# O resto do sistema se adapta automaticamente.
+# CONFIGURAÇÃO DE TICKERS — FONTE ÚNICA DA VERDADE
+#
+# Para ADICIONAR um ticker:
+#   1. Insira uma linha na lista abaixo com symbol, name e sector
+#   2. Se for financeira (banco, corretora), adicione o symbol em FINANCIAL_TICKERS
+#   3. Commite e faça push
+#   4. Rode: .\carregar.ps1 SYMBOL
+#
+# Para REMOVER um ticker:
+#   1. Delete a linha correspondente da lista abaixo
+#   2. Remova de FINANCIAL_TICKERS se aplicável
+#   3. Commite e faça push
+#   (os dados do banco são mantidos, mas o ticker some da UI)
+#
+# Setores disponíveis: Technology, Consumer, Financial, Healthcare, Energy, Materials
+#
+# Verificar cobertura da AV antes de adicionar:
+#   https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=SYMBOL&apikey=SUA_CHAVE
 # ─────────────────────────────────────────────────────────────────────────────
 
 TICKERS = [
@@ -27,7 +42,7 @@ TICKERS = [
     {"symbol": "ITUB",  "name": "Itaú Unibanco",        "sector": "Financial"},
     {"symbol": "NU",    "name": "Nubank",               "sector": "Financial"},
     {"symbol": "BBD",   "name": "Bradesco",             "sector": "Financial"},
-    {"symbol": "BDORY", "name": "Banco do Brasil",      "sector": "Financial"},
+    {"symbol": "XP",    "name": "XP Inc.",              "sector": "Financial"},
     # Healthcare
     {"symbol": "JNJ",   "name": "Johnson & Johnson",    "sector": "Healthcare"},
     {"symbol": "LLY",   "name": "Eli Lilly",            "sector": "Healthcare"},
