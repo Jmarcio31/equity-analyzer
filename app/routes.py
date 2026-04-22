@@ -1,10 +1,9 @@
 from flask import Blueprint, render_template, request, jsonify
-import sys, os
+import sys, os, traceback as tb
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from config import TICKERS, SECTOR_COLORS
+from config import TICKERS, SECTOR_COLORS, FINANCIAL_TICKERS
 from . import database as db
 from .calc import compute_valuation, compute_valuation_financial
-from config import FINANCIAL_TICKERS
 from .data import (fetch_current_price, fetch_overview,
                    fetch_income_statement, fetch_balance_sheet,
                    fetch_cash_flow, fetch_price_history,
@@ -43,14 +42,6 @@ def api_tickers():
 
 @main.route("/api/load/<symbol>", methods=["POST"])
 def load_symbol(symbol):
-    """
-    Carrega dados de UM ticker em 4 etapas separadas.
-    O frontend chama este endpoint 4 vezes, uma para cada step.
-    step=1: income statement
-    step=2: balance sheet
-    step=3: cash flow (monta rows e salva)
-    step=4: price history
-    """
     symbol = symbol.upper()
     valid  = [t["symbol"] for t in TICKERS]
     if symbol not in valid:
@@ -60,13 +51,11 @@ def load_symbol(symbol):
 
     try:
         if step == "1":
-            # Busca cotação + income statement
             price = fetch_current_price(symbol)
             if price > 0:
                 db.save_current_price(symbol, price)
                 db.log_update(symbol, "price")
             inc = fetch_income_statement(symbol)
-            # Salva temporariamente na sessão via banco (tabela temp)
             db.save_temp(symbol, "inc", inc)
             return jsonify({"ok": True, "step": 1, "price": price})
 
@@ -76,8 +65,7 @@ def load_symbol(symbol):
             return jsonify({"ok": True, "step": 2})
 
         elif step == "3":
-            cf = fetch_cash_flow(symbol)
-            # Recupera statements salvos e monta rows
+            cf  = fetch_cash_flow(symbol)
             inc = db.load_temp(symbol, "inc")
             bs  = db.load_temp(symbol, "bs")
             if not inc or not bs:
@@ -120,9 +108,8 @@ def analyze():
         try:
             rows = db.load_financials(symbol)
             if not rows:
-                return jsonify({"error": f"{symbol} ainda não foi carregado. Use o painel de progresso primeiro."}), 400
+                return jsonify({"error": f"{symbol} ainda não foi carregado."}), 400
 
-            # Preço — do banco se recente, senão busca
             if db.needs_price_update(symbol):
                 try:
                     price = fetch_current_price(symbol)
@@ -130,24 +117,23 @@ def analyze():
                         db.save_current_price(symbol, price)
                         db.log_update(symbol, "price")
                 except Exception:
-                    pass  # Rate limit ou erro — usa preço do banco
-            price, price_date = db.load_current_price_with_date(symbol)
+                    pass
 
-            # Histórico de preços
+            price, price_date = db.load_current_price_with_date(symbol)
             start_date    = rows[0]["date"] if rows else None
             price_history = db.load_price_history(symbol, start_date)
 
-            # Fallback: se price==0 (ex: reload falhou), usa último preço do histórico
             if not price and price_history:
-                last_ph = price_history[-1]
+                last_ph    = price_history[-1]
                 price      = last_ph.get("close", 0)
                 price_date = last_ph.get("date")
 
             is_fin = symbol in FINANCIAL_TICKERS
-            val = compute_valuation_financial(rows, price, treasury) if is_fin else compute_valuation(rows, price, treasury)
-            ticker_info = next((t for t in TICKERS if t["symbol"] == symbol), {})
+            val    = compute_valuation_financial(rows, price, treasury) if is_fin \
+                     else compute_valuation(rows, price, treasury)
 
-            clean_rows = [{k: v for k, v in r.items() if not k.startswith("_")} for r in rows]
+            ticker_info = next((t for t in TICKERS if t["symbol"] == symbol), {})
+            clean_rows  = [{k: v for k, v in r.items() if not k.startswith("_")} for r in rows]
 
             results.append({
                 "ticker":        symbol,
@@ -163,11 +149,16 @@ def analyze():
                 "valuation":     val,
                 "quarters":      [r["date"] for r in clean_rows],
                 "price_history": price_history,
-                "color":         SECTOR_COLORS.get(ticker_info.get("sector",""), "#4f7cff"),
+                "color":         SECTOR_COLORS.get(ticker_info.get("sector", ""), "#4f7cff"),
             })
 
         except Exception as e:
-            errors.append({"ticker": symbol, "error": str(e)})
+            # Inclui traceback completo para diagnóstico
+            errors.append({
+                "ticker":    symbol,
+                "error":     str(e),
+                "traceback": tb.format_exc()
+            })
 
     return jsonify({"results": results, "errors": errors})
 
@@ -183,9 +174,9 @@ def quota_check():
         })
     loaded = sum(1 for r in result if r["has_data"])
     return jsonify({
-        "tickers":    result,
-        "loaded":     loaded,
-        "pending":    len(result) - loaded,
+        "tickers":        result,
+        "loaded":         loaded,
+        "pending":        len(result) - loaded,
         "req_per_ticker": 4,
         "daily_limit":    25,
         "max_per_day":    6,
@@ -195,7 +186,8 @@ def quota_check():
 @main.route("/api/status")
 def api_status():
     status = db.get_update_status()
-    loaded = sum(1 for s in status if s.get("update_type") == "quarterly" and s.get("status") == "ok")
+    loaded = sum(1 for s in status
+                 if s.get("update_type") == "quarterly" and s.get("status") == "ok")
     return jsonify({
         "updates":        status,
         "loaded_tickers": loaded,
