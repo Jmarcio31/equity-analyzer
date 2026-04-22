@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, jsonify
-import sys, os, traceback as tb
+import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from config import TICKERS, SECTOR_COLORS, FINANCIAL_TICKERS
 from . import database as db
@@ -153,12 +153,7 @@ def analyze():
             })
 
         except Exception as e:
-            # Inclui traceback completo para diagnóstico
-            errors.append({
-                "ticker":    symbol,
-                "error":     str(e),
-                "traceback": tb.format_exc()
-            })
+            errors.append({"ticker": symbol, "error": str(e)})
 
     return jsonify({"results": results, "errors": errors})
 
